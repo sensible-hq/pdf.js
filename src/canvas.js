@@ -69,6 +69,7 @@ var CanvasGraphics = (function canvasGraphics() {
     this.xobjs = null;
     this.ScratchCanvas = ScratchCanvas;
     this.objs = objs;
+    this.onBreakPoint = false;
   }
 
   var LINE_CAP_STYLES = ['butt', 'round', 'square'];
@@ -98,7 +99,7 @@ var CanvasGraphics = (function canvasGraphics() {
     },
 
     executeIRQueue: function canvasGraphicsExecuteIRQueue(codeIR,
-                                  executionStartIdx, continueCallback) {
+                                  executionStartIdx, continueCallback, breakPoint) {
       var argsArray = codeIR.argsArray;
       var fnArray = codeIR.fnArray;
       var i = executionStartIdx || 0;
@@ -113,6 +114,10 @@ var CanvasGraphics = (function canvasGraphics() {
         executionEndIdx = Math.min(argsArrayLen, i + kExecutionTimeCheck);
 
         for (i; i < executionEndIdx; i++) {
+          if (i == breakPoint) {
+            this.onBreakPoint = true;
+            return i;
+          }
           if (fnArray[i] !== 'dependency') {
             this[fnArray[i]].apply(this, argsArray[i]);
           } else {
