@@ -794,15 +794,23 @@ var JpegStream = (function jpegStream() {
     // need to be removed
     this.dict = dict;
 
-    if (isAdobeImage(bytes))
+    if (isAdobeImage(bytes)) {
+      // when bug 674619 land, let's check if browser can do
+      // normal cmyk and then we won't have to the following
+      var cs = dict.get('ColorSpace');
+      if (isName(cs) && cs.name === 'DeviceCMYK') {
+        this.cmyk = bytes;
+        return
+      }
       bytes = fixAdobeImage(bytes);
+    }
 
     this.src = bytesToString(bytes);
   }
 
   constructor.prototype = {
-    getIR: function jpegStreamGetIR() {
-      return this.src;
+    getIR: function() {
+      return this.src || { cmyk: this.cmyk };
     },
     getChar: function jpegStreamGetChar() {
       error('internal error: getChar is not valid on JpegStream');

@@ -1,0 +1,3 @@
+[submodule "external/jpgjs"]
+	path = external/jpgjs
+	url = https://github.com/notmasteryet/jpgjs.git

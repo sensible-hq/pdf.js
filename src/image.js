@@ -230,7 +230,41 @@ var PDFImage = (function pdfImage() {
 })();
 
 var JpegImage = (function jpegImage() {
+  var cmykWorker = null;
+  var nextQueueTag = 0;
+  var cmykImagesQueue = {};
+  function cmykProcessed(e) {
+    var tag = e.data.tag;
+    var cmykImage = cmykImagesQueue[tag];
+    delete cmykImagesQueue[tag];
+
+    var objs = cmykImage.objs;
+    var objId = cmykImage.objId;
+    if (e.data.error)
+      throw e.data.error;
+
+    cmykImage.loaded = true;
+    cmykImage.domImage = e.data;
+
+    objs.resolve(objId, cmykImage);
+
+    if (cmykImage.onLoad)
+      cmykImage.onLoad();
+  }
+
   function JpegImage(objId, imageData, objs) {
+    if (imageData.cmyk) {
+      if (!cmykWorker) {
+        cmykWorker = new Worker('../src/jpgworker_loader.js');
+        cmykWorker.addEventListener('message', cmykProcessed, false);
+      }
+      var tag = "jpg" + (++nextQueueTag);
+      cmykImagesQueue[tag] = this;
+      cmykWorker.postMessage({ tag: tag, bytes: imageData.cmyk });
+      this.objs = objs;
+      this.objId = objId;
+      return;
+    }
     var src = 'data:image/jpeg;base64,' + window.btoa(imageData);
 
     var img = new Image();

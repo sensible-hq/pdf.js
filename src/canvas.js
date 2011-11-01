@@ -58,6 +58,30 @@ function ScratchCanvas(width, height) {
   canvas.height = height;
   return canvas;
 }
+/**
+ * Create a canvas from a typed array of pixel data.
+ * @returns Canvas
+ */
+function pixelsToCanvas(pixels, width, height) {
+  var tmpCanvas = ScratchCanvas(width, height);
+  var tmpCtx = tmpCanvas.getContext('2d');
+  var tmpImgData;
+
+  // Some browsers can set an UInt8Array directly as imageData, some
+  // can't. As long as we don't have proper feature detection, just
+  // copy over each pixel and set the imageData that way.
+  tmpImgData = tmpCtx.getImageData(0, 0, width, height);
+
+  // Copy over the imageData.
+  var tmpImgDataPixels = tmpImgData.data;
+  var len = tmpImgDataPixels.length;
+
+  while (len--) {
+    tmpImgDataPixels[len] = pixels[len];
+  }
+  tmpCtx.putImageData(tmpImgData, 0, 0);
+  return tmpCanvas;
+}
 
 var CanvasGraphics = (function canvasGraphics() {
   // Defines the time the executeIRQueue is going to be executing
@@ -697,6 +721,10 @@ var CanvasGraphics = (function canvasGraphics() {
       ctx.scale(1 / w, -1 / h);
 
       var domImage = image.getImage();
+      if (domImage.data) {
+        domImage = pixelsToCanvas(domImage.data, domImage.width,
+                                        domImage.height);
+      }
       ctx.drawImage(domImage, 0, 0, domImage.width, domImage.height,
                     0, -h, w, h);
 
@@ -759,25 +787,7 @@ var CanvasGraphics = (function canvasGraphics() {
       var h = imgData.height;
       // scale the image to the unit square
       ctx.scale(1 / w, -1 / h);
-
-      var tmpCanvas = new this.ScratchCanvas(w, h);
-      var tmpCtx = tmpCanvas.getContext('2d');
-      var tmpImgData;
-
-      // Some browsers can set an UInt8Array directly as imageData, some
-      // can't. As long as we don't have proper feature detection, just
-      // copy over each pixel and set the imageData that way.
-      tmpImgData = tmpCtx.getImageData(0, 0, w, h);
-
-      // Copy over the imageData.
-      var tmpImgDataPixels = tmpImgData.data;
-      var len = tmpImgDataPixels.length;
-
-      while (len--) {
-        tmpImgDataPixels[len] = imgData.data[len];
-      }
-
-      tmpCtx.putImageData(tmpImgData, 0, 0);
+      var tmpCanvas = pixelsToCanvas(imgData.data, w, h);
       ctx.drawImage(tmpCanvas, 0, -h);
       this.restore();
     },
