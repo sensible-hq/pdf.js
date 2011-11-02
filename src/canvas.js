@@ -1,7 +1,10 @@
-// <canvas> contexts store most of the state we need natively.
-// However, PDF needs a bit more state, which we store here.
+/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 
 'use strict';
+
+// <canvas> contexts store most of the state we need natively.
+// However, PDF needs a bit more state, which we store here.
 
 var CanvasExtraState = (function canvasExtraState() {
   function constructor(old) {
@@ -21,7 +24,9 @@ var CanvasExtraState = (function canvasExtraState() {
     this.wordSpacing = 0;
     this.textHScale = 1;
     // Color spaces
+    this.fillColorSpace = new DeviceGrayCS;
     this.fillColorSpaceObj = null;
+    this.strokeColorSpace = new DeviceGrayCS;
     this.strokeColorSpaceObj = null;
     this.fillColorObj = null;
     this.strokeColorObj = null;
@@ -330,10 +335,12 @@ var CanvasGraphics = (function canvasGraphics() {
       this.restoreFillRule(savedFillRule);
     },
     closeFillStroke: function canvasGraphicsCloseFillStroke() {
-      return this.fillStroke();
+      this.closePath();
+      this.fillStroke();
     },
     closeEOFillStroke: function canvasGraphicsCloseEOFillStroke() {
       var savedFillRule = this.setEOFillRule();
+      this.closePath();
       this.fillStroke();
       this.restoreFillRule(savedFillRule);
     },
@@ -535,8 +542,7 @@ var CanvasGraphics = (function canvasGraphics() {
     },
 
     // Color
-    setStrokeColorSpace:
-    function canvasGraphicsSetStrokeColorSpacefunction(raw) {
+    setStrokeColorSpace: function canvasGraphicsSetStrokeColorSpace(raw) {
       this.current.strokeColorSpace = ColorSpace.fromIR(raw);
     },
     setFillColorSpace: function canvasGraphicsSetFillColorSpace(raw) {
@@ -547,7 +553,7 @@ var CanvasGraphics = (function canvasGraphics() {
       var color = cs.getRgb(arguments);
       this.setStrokeRGBColor.apply(this, color);
     },
-    getColorN_IR_Pattern: function(IR, cs) {
+    getColorN_IR_Pattern: function canvasGraphicsGetColorN_IR_Pattern(IR, cs) {
       if (IR[0] == 'TilingPattern') {
         var args = IR[1];
         var base = cs.base;
@@ -663,8 +669,8 @@ var CanvasGraphics = (function canvasGraphics() {
       error('Should not call beginImageData');
     },
 
-    paintFormXObjectBegin:
-    function canvasGraphicsPaintFormXObject(matrix, bbox) {
+    paintFormXObjectBegin: function canvasGraphicsPaintFormXObjectBegin(matrix,
+                                                                        bbox) {
       this.save();
 
       if (matrix && isArray(matrix) && 6 == matrix.length)
@@ -679,11 +685,11 @@ var CanvasGraphics = (function canvasGraphics() {
       }
     },
 
-    paintFormXObjectEnd: function() {
+    paintFormXObjectEnd: function canvasGraphicsPaintFormXObjectEnd() {
       this.restore();
     },
 
-    paintJpegXObject: function(objId, w, h) {
+    paintJpegXObject: function canvasGraphicsPaintJpegXObject(objId, w, h) {
       var image = this.objs.get(objId);
       if (!image) {
         error('Dependent image isn\'t ready yet');
@@ -702,7 +708,8 @@ var CanvasGraphics = (function canvasGraphics() {
       this.restore();
     },
 
-    paintImageMaskXObject: function(imgArray, inverseDecode, width, height) {
+    paintImageMaskXObject: function canvasGraphicsPaintImageMaskXObject(
+                             imgArray, inverseDecode, width, height) {
       function applyStencilMask(buffer, inverseDecode) {
         var imgArrayPos = 0;
         var i, j, mask, buf;
@@ -750,7 +757,7 @@ var CanvasGraphics = (function canvasGraphics() {
       this.restore();
     },
 
-    paintImageXObject: function(imgData) {
+    paintImageXObject: function canvasGraphicsPaintImageXObject(imgData) {
       this.save();
       var ctx = this.ctx;
       var w = imgData.width;
@@ -839,3 +846,4 @@ var CanvasGraphics = (function canvasGraphics() {
 
   return constructor;
 })();
+
