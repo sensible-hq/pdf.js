@@ -24,9 +24,9 @@ var CanvasExtraState = (function canvasExtraState() {
     this.wordSpacing = 0;
     this.textHScale = 1;
     // Color spaces
-    this.fillColorSpace = new DeviceGrayCS;
+    this.fillColorSpace = new DeviceGrayCS();
     this.fillColorSpaceObj = null;
-    this.strokeColorSpace = new DeviceGrayCS;
+    this.strokeColorSpace = new DeviceGrayCS();
     this.strokeColorSpaceObj = null;
     this.fillColorObj = null;
     this.strokeColorObj = null;
@@ -59,14 +59,120 @@ function ScratchCanvas(width, height) {
   return canvas;
 }
 
+function addContextCurrentTransform(ctx) {
+  // If the context doesn't expose a `mozCurrentTransform`, add a JS based on.
+  if (!ctx.mozCurrentTransform) {
+    // Store the original context
+    ctx._originalSave = ctx.save;
+    ctx._originalRestore = ctx.restore;
+    ctx._originalRotate = ctx.rotate;
+    ctx._originalScale = ctx.scale;
+    ctx._originalTranslate = ctx.translate;
+    ctx._originalTransform = ctx.transform;
+
+    ctx._transformMatrix = [1, 0, 0, 1, 0, 0];
+    ctx._transformStack = [];
+
+    Object.defineProperty(ctx, 'mozCurrentTransform', {
+      get: function getCurrentTransform() {
+        return this._transformMatrix;
+      }
+    });
+
+    Object.defineProperty(ctx, 'mozCurrentTransformInverse', {
+      get: function getCurrentTransformInverse() {
+        // Calculation done using WolframAlpha:
+        // http://www.wolframalpha.com/input/?
+        //   i=Inverse+{{a%2C+c%2C+e}%2C+{b%2C+d%2C+f}%2C+{0%2C+0%2C+1}}
+
+        var m = this._transformMatrix;
+        var a = m[0], b = m[1], c = m[2], d = m[3], e = m[4], f = m[5];
+
+        var ad_bc = a * d - b * c;
+        var bc_ad = b * c - a * d;
+
+        return [
+          d / ad_bc,
+          b / bc_ad,
+          c / bc_ad,
+          a / ad_bc,
+          (d * e - c * f) / bc_ad,
+          (b * e - a * f) / ad_bc
+        ];
+      }
+    });
+
+    ctx.save = function ctxSave() {
+      var old = this._transformMatrix;
+      this._transformStack.push(old);
+      this._transformMatrix = old.slice(0, 6);
+
+      this._originalSave();
+    };
+
+    ctx.restore = function ctxRestore() {
+      var prev = this._transformStack.pop();
+      if (prev) {
+        this._transformMatrix = prev;
+        this._originalRestore();
+      }
+    };
+
+    ctx.translate = function ctxTranslate(x, y) {
+      var m = this._transformMatrix;
+      m[4] = m[0] * x + m[2] * y + m[4];
+      m[5] = m[1] * x + m[3] * y + m[5];
+
+      this._originalTranslate(x, y);
+    };
+
+    ctx.scale = function ctxScale(x, y) {
+      var m = this._transformMatrix;
+      m[0] = m[0] * x;
+      m[1] = m[1] * x;
+      m[2] = m[2] * y;
+      m[3] = m[3] * y;
+
+      this._originalScale(x, y);
+    };
+
+    ctx.transform = function ctxTransform(a, b, c, d, e, f) {
+      var m = this._transformMatrix;
+      this._transformMatrix = [
+        m[0] * a + m[2] * b,
+        m[1] * a + m[3] * b,
+        m[0] * c + m[2] * d,
+        m[1] * c + m[3] * d,
+        m[0] * e + m[2] * f + m[4],
+        m[1] * e + m[3] * f + m[5]
+      ];
+
+      ctx._originalTransform(a, b, c, d, e, f);
+    };
+
+    ctx.rotate = function ctxRotate(angle) {
+      var cosValue = Math.cos(angle);
+      var sinValue = Math.sin(angle);
+
+      var m = this._transformMatrix;
+      this._transformMatrix = [
+        m[0] * cosValue + m[2] * sinValue,
+        m[1] * cosValue + m[3] * sinValue,
+        m[0] * (-sinValue) + m[2] * cosValue,
+        m[1] * (-sinValue) + m[3] * cosValue,
+        m[4],
+        m[5]
+      ];
+
+      this._originalRotate(angle);
+    };
+  }
+}
+
 var CanvasGraphics = (function canvasGraphics() {
   // Defines the time the executeIRQueue is going to be executing
   // before it stops and shedules a continue of execution.
   var kExecutionTime = 50;
-
-  // Number of IR commands to execute before checking
-  // if we execute longer then `kExecutionTime`.
-  var kExecutionTimeCheck = 500;
 
   function constructor(canvasCtx, objs) {
     this.ctx = canvasCtx;
@@ -78,6 +184,10 @@ var CanvasGraphics = (function canvasGraphics() {
     this.ScratchCanvas = ScratchCanvas;
     this.objs = objs;
     this.onBreakPoint = false;
+
+    if (canvasCtx) {
+      addContextCurrentTransform(canvasCtx);
+    }
   }
 
   var LINE_CAP_STYLES = ['butt', 'round', 'square'];
@@ -113,35 +223,37 @@ var CanvasGraphics = (function canvasGraphics() {
       var i = executionStartIdx || 0;
       var argsArrayLen = argsArray.length;
 
+      // Sometimes the IRQueue to execute is empty.
+      if (argsArrayLen == i) {
+        return i;
+      }
+
       var executionEndIdx;
       var startTime = Date.now();
 
       var objs = this.objs;
 
-      do {
-        executionEndIdx = Math.min(argsArrayLen, i + kExecutionTimeCheck);
+      while (true) {
+        if (i == breakPoint) {
+          this.onBreakPoint = true;
+          return i;
+        }
+        if (fnArray[i] !== 'dependency') {
+          this[fnArray[i]].apply(this, argsArray[i]);
+        } else {
+          var deps = argsArray[i];
+          for (var n = 0, nn = deps.length; n < nn; n++) {
+            var depObjId = deps[n];
 
-        for (i; i < executionEndIdx; i++) {
-          if (i == breakPoint) {
-            this.onBreakPoint = true;
-            return i;
-          }
-          if (fnArray[i] !== 'dependency') {
-            this[fnArray[i]].apply(this, argsArray[i]);
-          } else {
-            var deps = argsArray[i];
-            for (var n = 0; n < deps.length; n++) {
-              var depObjId = deps[n];
-
-              // If the promise isn't resolved yet, add the continueCallback
-              // to the promise and bail out.
-              if (!objs.isResolved(depObjId)) {
-                objs.get(depObjId, continueCallback);
-                return i;
-              }
+            // If the promise isn't resolved yet, add the continueCallback
+            // to the promise and bail out.
+            if (!objs.isResolved(depObjId)) {
+              objs.get(depObjId, continueCallback);
+              return i;
             }
           }
         }
+        i++;
 
         // If the entire IRQueue was executed, stop as were done.
         if (i == argsArrayLen) {
@@ -158,7 +270,7 @@ var CanvasGraphics = (function canvasGraphics() {
 
         // If the IRQueue isn't executed completly yet OR the execution time
         // was short enough, do another execution round.
-      } while (true);
+      }
     },
 
     endDrawing: function canvasGraphicsEndDrawing() {
@@ -189,7 +301,7 @@ var CanvasGraphics = (function canvasGraphics() {
       TODO('set flatness: ' + flatness);
     },
     setGState: function canvasGraphicsSetGState(states) {
-      for (var i = 0; i < states.length; i++) {
+      for (var i = 0, ii = states.length; i < ii; i++) {
         var state = states[i];
         var key = state[0];
         var value = state[1];
@@ -430,13 +542,14 @@ var CanvasGraphics = (function canvasGraphics() {
       var charSpacing = current.charSpacing;
       var wordSpacing = current.wordSpacing;
       var textHScale = current.textHScale;
+      var fontMatrix = font.fontMatrix || IDENTITY_MATRIX;
+      var textHScale2 = textHScale * fontMatrix[0];
       var glyphsLength = glyphs.length;
       if (font.coded) {
         ctx.save();
         ctx.transform.apply(ctx, current.textMatrix);
         ctx.translate(current.x, current.y);
 
-        var fontMatrix = font.fontMatrix || IDENTITY_MATRIX;
         ctx.scale(1 / textHScale, 1);
         for (var i = 0; i < glyphsLength; ++i) {
 
@@ -450,14 +563,14 @@ var CanvasGraphics = (function canvasGraphics() {
           this.save();
           ctx.scale(fontSize, fontSize);
           ctx.transform.apply(ctx, fontMatrix);
-          this.executeIRQueue(glyph.IRQueue);
+          this.executeIRQueue(glyph.codeIRQueue);
           this.restore();
 
           var transformed = Util.applyTransform([glyph.width, 0], fontMatrix);
           var width = transformed[0] * fontSize + charSpacing;
 
           ctx.translate(width, 0);
-          current.x += width;
+          current.x += width * textHScale2;
 
         }
         ctx.restore();
@@ -466,7 +579,7 @@ var CanvasGraphics = (function canvasGraphics() {
         ctx.transform.apply(ctx, current.textMatrix);
         ctx.scale(1, -1);
         ctx.translate(current.x, -1 * current.y);
-        ctx.transform.apply(ctx, font.fontMatrix || IDENTITY_MATRIX);
+        ctx.transform.apply(ctx, fontMatrix);
 
         ctx.scale(1 / textHScale, 1);
 
@@ -479,15 +592,13 @@ var CanvasGraphics = (function canvasGraphics() {
             continue;
           }
 
-          var unicode = glyph.unicode;
-          var char = (unicode >= 0x10000) ?
-            String.fromCharCode(0xD800 | ((unicode - 0x10000) >> 10),
-            0xDC00 | (unicode & 0x3FF)) : String.fromCharCode(unicode);
-
+          var char = glyph.fontChar;
           ctx.fillText(char, width, 0);
           width += glyph.width * fontSize * 0.001 + charSpacing;
+
+          // TODO actual characters can be extracted from the glyph.unicode
         }
-        current.x += width;
+        current.x += width * textHScale2;
 
         ctx.restore();
       }
@@ -497,12 +608,13 @@ var CanvasGraphics = (function canvasGraphics() {
       var ctx = this.ctx;
       var current = this.current;
       var fontSize = current.fontSize;
-      var textHScale = current.textHScale;
+      var textHScale2 = current.textHScale *
+        (current.font.fontMatrix || IDENTITY_MATRIX)[0];
       var arrLength = arr.length;
       for (var i = 0; i < arrLength; ++i) {
         var e = arr[i];
         if (isNum(e)) {
-          current.x -= e * 0.001 * fontSize * textHScale;
+          current.x -= e * 0.001 * fontSize * textHScale2;
         } else if (isString(e)) {
           this.showText(e);
         } else {
@@ -551,7 +663,9 @@ var CanvasGraphics = (function canvasGraphics() {
     setStrokeColor: function canvasGraphicsSetStrokeColor(/*...*/) {
       var cs = this.current.strokeColorSpace;
       var color = cs.getRgb(arguments);
-      this.setStrokeRGBColor.apply(this, color);
+      var color = Util.makeCssRgb.apply(null, cs.getRgb(arguments));
+      this.ctx.strokeStyle = color;
+      this.current.strokeColor = color;
     },
     getColorN_IR_Pattern: function canvasGraphicsGetColorN_IR_Pattern(IR, cs) {
       if (IR[0] == 'TilingPattern') {
@@ -586,8 +700,9 @@ var CanvasGraphics = (function canvasGraphics() {
     },
     setFillColor: function canvasGraphicsSetFillColor(/*...*/) {
       var cs = this.current.fillColorSpace;
-      var color = cs.getRgb(arguments);
-      this.setFillRGBColor.apply(this, color);
+      var color = Util.makeCssRgb.apply(null, cs.getRgb(arguments));
+      this.ctx.fillStyle = color;
+      this.current.fillColor = color;
     },
     setFillColorN_IR: function canvasGraphicsSetFillColorN(/*...*/) {
       var cs = this.current.fillColorSpace;
@@ -599,27 +714,49 @@ var CanvasGraphics = (function canvasGraphics() {
       }
     },
     setStrokeGray: function canvasGraphicsSetStrokeGray(gray) {
-      this.setStrokeRGBColor(gray, gray, gray);
+      if (!(this.current.strokeColorSpace instanceof DeviceGrayCS))
+        this.current.strokeColorSpace = new DeviceGrayCS();
+
+      var color = Util.makeCssRgb(gray, gray, gray);
+      this.ctx.strokeStyle = color;
+      this.current.strokeColor = color;
     },
     setFillGray: function canvasGraphicsSetFillGray(gray) {
-      this.setFillRGBColor(gray, gray, gray);
+      if (!(this.current.fillColorSpace instanceof DeviceGrayCS))
+        this.current.fillColorSpace = new DeviceGrayCS();
+
+      var color = Util.makeCssRgb(gray, gray, gray);
+      this.ctx.fillStyle = color;
+      this.current.fillColor = color;
     },
     setStrokeRGBColor: function canvasGraphicsSetStrokeRGBColor(r, g, b) {
+      if (!(this.current.strokeColorSpace instanceof DeviceRgbCS))
+        this.current.strokeColorSpace = new DeviceRgbCS();
+
       var color = Util.makeCssRgb(r, g, b);
       this.ctx.strokeStyle = color;
       this.current.strokeColor = color;
     },
     setFillRGBColor: function canvasGraphicsSetFillRGBColor(r, g, b) {
+      if (!(this.current.fillColorSpace instanceof DeviceRgbCS))
+        this.current.fillColorSpace = new DeviceRgbCS();
+
       var color = Util.makeCssRgb(r, g, b);
       this.ctx.fillStyle = color;
       this.current.fillColor = color;
     },
     setStrokeCMYKColor: function canvasGraphicsSetStrokeCMYKColor(c, m, y, k) {
+      if (!(this.current.strokeColorSpace instanceof DeviceCmykCS))
+        this.current.strokeColorSpace = new DeviceCmykCS();
+
       var color = Util.makeCssCmyk(c, m, y, k);
       this.ctx.strokeStyle = color;
       this.current.strokeColor = color;
     },
     setFillCMYKColor: function canvasGraphicsSetFillCMYKColor(c, m, y, k) {
+      if (!(this.current.fillColorSpace instanceof DeviceCmykCS))
+        this.current.fillColorSpace = new DeviceCmykCS();
+
       var color = Util.makeCssCmyk(c, m, y, k);
       this.ctx.fillStyle = color;
       this.current.fillColor = color;
