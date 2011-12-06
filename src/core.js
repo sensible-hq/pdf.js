@@ -39,11 +39,15 @@ function getPdf(arg, callback) {
   if ('error' in params)
     xhr.onerror = params.error || undefined;
 
-  xhr.onreadystatechange = function getPdfOnreadystatechange() {
-    if (xhr.readyState === 4 && xhr.status === xhr.expected) {
-      var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
-                  xhr.responseArrayBuffer || xhr.response);
-      callback(data);
+  xhr.onreadystatechange = function getPdfOnreadystatechange(e) {
+    if (xhr.readyState === 4) {
+      if (xhr.status === xhr.expected) {
+        var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
+                    xhr.responseArrayBuffer || xhr.response);
+        callback(data);
+      } else if (params.error) {
+        params.error(e);
+      }
     }
   };
   xhr.send(null);
@@ -63,6 +67,9 @@ var Page = (function pagePage() {
     };
     this.xref = xref;
     this.ref = ref;
+
+    this.ctx = null;
+    this.callback = null;
   }
 
   constructor.prototype = {
@@ -156,7 +163,7 @@ var Page = (function pagePage() {
                                                 IRQueue, fonts) {
       var self = this;
       this.IRQueue = IRQueue;
-      var gfx = new CanvasGraphics(this.ctx, this.objs);
+      var gfx = new CanvasGraphics(this.ctx, this.objs, this.textLayer);
 
       var displayContinuation = function pageDisplayContinuation() {
         // Always defer call to display() to work around bug in
@@ -165,8 +172,10 @@ var Page = (function pagePage() {
           try {
             self.display(gfx, self.callback);
           } catch (e) {
-            if (self.callback) self.callback(e.toString());
-            throw e;
+            if (self.callback)
+              self.callback(e);
+            else
+              throw e;
           }
         });
       };
@@ -247,6 +256,7 @@ var Page = (function pagePage() {
         }
         if (startIdx == length) {
           self.stats.render = Date.now();
+          gfx.endDrawing();
           if (callback) callback();
         }
       }
@@ -309,9 +319,10 @@ var Page = (function pagePage() {
       }
       return links;
     },
-    startRendering: function pageStartRendering(ctx, callback)  {
+    startRendering: function pageStartRendering(ctx, callback, textLayer)  {
       this.ctx = ctx;
       this.callback = callback;
+      this.textLayer = textLayer;
 
       this.startRenderingTime = Date.now();
       this.pdf.startRendering(this);
@@ -593,6 +604,14 @@ var PDFDoc = (function pdfDoc() {
           this.objs.setData(id, font);
         }
       }.bind(this));
+
+      messageHandler.on('page_error', function pdfDocError(data) {
+        var page = this.pageCache[data.pageNum];
+        if (page.callback)
+          page.callback(data.error);
+        else
+          throw data.error;
+      }, this);
 
       setTimeout(function pdfDocFontReadySetTimeout() {
         messageHandler.send('doc', this.data);
