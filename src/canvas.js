@@ -284,19 +284,14 @@ var CanvasGraphics = (function canvasGraphics() {
       var slowCommands = this.slowCommands;
 
       while (true) {
-<<<<<<< HEAD
         if (i == breakPoint) {
           this.onBreakPoint = true;
           return i;
         }
-        if (fnArray[i] !== 'dependency') {
-          this[fnArray[i]].apply(this, argsArray[i]);
-=======
-        fnName = fnArray[i];
 
+        fnName = fnArray[i];
         if (fnName !== 'dependency') {
           this[fnName].apply(this, argsArray[i]);
->>>>>>> upstream/master
         } else {
           var deps = argsArray[i];
           for (var n = 0, nn = deps.length; n < nn; n++) {
