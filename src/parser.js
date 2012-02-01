@@ -9,8 +9,8 @@ function isEOF(v) {
   return v == EOF;
 }
 
-var Parser = (function parserParser() {
-  function constructor(lexer, allowStreams, xref) {
+var Parser = (function ParserClosure() {
+  function Parser(lexer, allowStreams, xref) {
     this.lexer = lexer;
     this.allowStreams = allowStreams;
     this.xref = xref;
@@ -18,7 +18,7 @@ var Parser = (function parserParser() {
     this.refill();
   }
 
-  constructor.prototype = {
+  Parser.prototype = {
     refill: function parserRefill() {
       this.buf1 = this.lexer.getObj();
       this.buf2 = this.lexer.getObj();
@@ -157,7 +157,7 @@ var Parser = (function parserParser() {
       imageStream = this.filter(imageStream, dict, length);
       imageStream.parameters = dict;
 
-      this.buf2 = new Cmd('EI');
+      this.buf2 = Cmd.get('EI');
       this.shift();
 
       return imageStream;
@@ -240,6 +240,10 @@ var Parser = (function parserParser() {
         var bytes = stream.getBytes(length);
         return new JpegStream(bytes, stream.dict, this.xref);
       }
+      if (name == 'JPXDecode' || name == 'JPX') {
+        var bytes = stream.getBytes(length);
+        return new JpxStream(bytes, stream.dict);
+      }
       if (name == 'ASCII85Decode' || name == 'A85') {
         return new Ascii85Stream(stream);
       }
@@ -249,20 +253,23 @@ var Parser = (function parserParser() {
       if (name == 'CCITTFaxDecode' || name == 'CCF') {
         return new CCITTFaxStream(stream, params);
       }
-      TODO('filter "' + name + '" not supported yet');
+      if (name == 'RunLengthDecode') {
+        return new RunLengthStream(stream);
+      }
+      warn('filter "' + name + '" not supported yet');
       return stream;
     }
   };
 
-  return constructor;
+  return Parser;
 })();
 
-var Lexer = (function lexer() {
-  function constructor(stream) {
+var Lexer = (function LexerClosure() {
+  function Lexer(stream) {
     this.stream = stream;
   }
 
-  constructor.isSpace = function lexerIsSpace(ch) {
+  Lexer.isSpace = function lexerIsSpace(ch) {
     return ch == ' ' || ch == '\t' || ch == '\x0d' || ch == '\x0a';
   };
 
@@ -296,7 +303,7 @@ var Lexer = (function lexer() {
     return -1;
   }
 
-  constructor.prototype = {
+  Lexer.prototype = {
     getNumber: function lexerGetNumber(ch) {
       var floating = false;
       var str = ch;
@@ -496,14 +503,14 @@ var Lexer = (function lexer() {
         // array punctuation
         case '[':
         case ']':
-          return new Cmd(ch);
+          return Cmd.get(ch);
         // hex string or dict punctuation
         case '<':
           ch = stream.lookChar();
           if (ch == '<') {
             // dict punctuation
             stream.skip();
-            return new Cmd('<<');
+            return Cmd.get('<<');
           }
           return this.getHexString(ch);
         // dict punctuation
@@ -511,11 +518,11 @@ var Lexer = (function lexer() {
           ch = stream.lookChar();
           if (ch == '>') {
             stream.skip();
-            return new Cmd('>>');
+            return Cmd.get('>>');
           }
         case '{':
         case '}':
-          return new Cmd(ch);
+          return Cmd.get(ch);
         // fall through
         case ')':
           error('Illegal character: ' + ch);
@@ -538,7 +545,7 @@ var Lexer = (function lexer() {
         return false;
       if (str == 'null')
         return null;
-      return new Cmd(str);
+      return Cmd.get(str);
     },
     skipToNextLine: function lexerSkipToNextLine() {
       var stream = this.stream;
@@ -558,11 +565,11 @@ var Lexer = (function lexer() {
     }
   };
 
-  return constructor;
+  return Lexer;
 })();
 
-var Linearization = (function linearizationLinearization() {
-  function constructor(stream) {
+var Linearization = (function LinearizationClosure() {
+  function Linearization(stream) {
     this.parser = new Parser(new Lexer(stream), false);
     var obj1 = this.parser.getObj();
     var obj2 = this.parser.getObj();
@@ -576,7 +583,7 @@ var Linearization = (function linearizationLinearization() {
     }
   }
 
-  constructor.prototype = {
+  Linearization.prototype = {
     getInt: function linearizationGetInt(name) {
       var linDict = this.linDict;
       var obj;
@@ -635,6 +642,6 @@ var Linearization = (function linearizationLinearization() {
     }
   };
 
-  return constructor;
+  return Linearization;
 })();
 

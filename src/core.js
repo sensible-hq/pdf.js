@@ -5,6 +5,8 @@
 
 var globalScope = (typeof window === 'undefined') ? this : window;
 
+var isWorker = (typeof window == 'undefined');
+
 var ERRORS = 0, WARNINGS = 1, TODOS = 5;
 var verbosity = WARNINGS;
 
@@ -31,7 +33,7 @@ function getPdf(arg, callback) {
   var xhr = new XMLHttpRequest();
   xhr.open('GET', params.url);
   xhr.mozResponseType = xhr.responseType = 'arraybuffer';
-  xhr.expected = (document.URL.indexOf('file:') === 0) ? 0 : 200;
+  xhr.expected = (params.url.indexOf('file:') === 0) ? 0 : 200;
 
   if ('progress' in params)
     xhr.onprogress = params.progress || undefined;
@@ -54,8 +56,8 @@ function getPdf(arg, callback) {
 }
 globalScope.PDFJS.getPdf = getPdf;
 
-var Page = (function pagePage() {
-  function constructor(xref, pageNumber, pageDict, ref) {
+var Page = (function PageClosure() {
+  function Page(xref, pageNumber, pageDict, ref) {
     this.pageNumber = pageNumber;
     this.pageDict = pageDict;
     this.stats = {
@@ -68,11 +70,10 @@ var Page = (function pagePage() {
     this.xref = xref;
     this.ref = ref;
 
-    this.ctx = null;
-    this.callback = null;
+    this.displayReadyPromise = null;
   }
 
-  constructor.prototype = {
+  Page.prototype = {
     getPageProp: function pageGetPageProp(key) {
       return this.xref.fetchIfRef(this.pageDict.get(key));
     },
@@ -108,9 +109,11 @@ var Page = (function pagePage() {
         width: this.width,
         height: this.height
       };
+      var mediaBox = this.mediaBox;
+      var offsetX = mediaBox[0], offsetY = mediaBox[1];
       if (isArray(obj) && obj.length == 4) {
-        var tl = this.rotatePoint(obj[0], obj[1]);
-        var br = this.rotatePoint(obj[2], obj[3]);
+        var tl = this.rotatePoint(obj[0] - offsetX, obj[1] - offsetY);
+        var br = this.rotatePoint(obj[2] - offsetX, obj[3] - offsetY);
         view.x = Math.min(tl.x, br.x);
         view.y = Math.min(tl.y, br.y);
         view.width = Math.abs(tl.x - br.x);
@@ -163,20 +166,12 @@ var Page = (function pagePage() {
                                                 IRQueue, fonts) {
       var self = this;
       this.IRQueue = IRQueue;
-      var gfx = new CanvasGraphics(this.ctx, this.objs, this.textLayer);
 
       var displayContinuation = function pageDisplayContinuation() {
         // Always defer call to display() to work around bug in
         // Firefox error reporting from XHR callbacks.
         setTimeout(function pageSetTimeout() {
-          try {
-            self.display(gfx, self.callback);
-          } catch (e) {
-            if (self.callback)
-              self.callback(e);
-            else
-              throw e;
-          }
+          self.displayReadyPromise.resolve();
         });
       };
 
@@ -201,6 +196,9 @@ var Page = (function pagePage() {
         for (i = 0; i < n; ++i)
           content[i] = xref.fetchIfRef(content[i]);
         content = new StreamsSequenceStream(content);
+      } else if (!content) {
+        // replacing non-existent page content with empty one
+        content = new Stream(new Uint8Array(0));
       }
 
       var pe = this.pe = new PartialEvaluator(
@@ -278,58 +276,160 @@ var Page = (function pagePage() {
       }
     },
     getLinks: function pageGetLinks() {
+      var links = [];
+      var annotations = pageGetAnnotations();
+      var i, n = annotations.length;
+      for (i = 0; i < n; ++i) {
+        if (annotations[i].type != 'Link')
+          continue;
+        links.push(annotations[i]);
+      }
+      return links;
+    },
+    getAnnotations: function pageGetAnnotations() {
       var xref = this.xref;
+      function getInheritableProperty(annotation, name) {
+        var item = annotation;
+        while (item && !item.has(name)) {
+          item = xref.fetchIfRef(item.get('Parent'));
+        }
+        if (!item)
+          return null;
+        return item.get(name);
+      }
+
       var annotations = xref.fetchIfRef(this.annotations) || [];
       var i, n = annotations.length;
-      var links = [];
+      var items = [];
       for (i = 0; i < n; ++i) {
-        var annotation = xref.fetch(annotations[i]);
+        var annotationRef = annotations[i];
+        var annotation = xref.fetch(annotationRef);
         if (!isDict(annotation))
           continue;
         var subtype = annotation.get('Subtype');
-        if (!isName(subtype) || subtype.name != 'Link')
+        if (!isName(subtype))
           continue;
         var rect = annotation.get('Rect');
         var topLeftCorner = this.rotatePoint(rect[0], rect[1]);
         var bottomRightCorner = this.rotatePoint(rect[2], rect[3]);
 
-        var link = {};
-        link.x = Math.min(topLeftCorner.x, bottomRightCorner.x);
-        link.y = Math.min(topLeftCorner.y, bottomRightCorner.y);
-        link.width = Math.abs(topLeftCorner.x - bottomRightCorner.x);
-        link.height = Math.abs(topLeftCorner.y - bottomRightCorner.y);
-        var a = this.xref.fetchIfRef(annotation.get('A'));
-        if (a) {
-          switch (a.get('S').name) {
-            case 'URI':
-              link.url = a.get('URI');
+        var item = {};
+        item.type = subtype.name;
+        item.x = Math.min(topLeftCorner.x, bottomRightCorner.x);
+        item.y = Math.min(topLeftCorner.y, bottomRightCorner.y);
+        item.width = Math.abs(topLeftCorner.x - bottomRightCorner.x);
+        item.height = Math.abs(topLeftCorner.y - bottomRightCorner.y);
+        switch (subtype.name) {
+          case 'Link':
+            var a = this.xref.fetchIfRef(annotation.get('A'));
+            if (a) {
+              switch (a.get('S').name) {
+                case 'URI':
+                  item.url = a.get('URI');
+                  break;
+                case 'GoTo':
+                  item.dest = a.get('D');
+                  break;
+                default:
+                  TODO('other link types');
+              }
+            } else if (annotation.has('Dest')) {
+              // simple destination link
+              var dest = annotation.get('Dest');
+              item.dest = isName(dest) ? dest.name : dest;
+            }
+            break;
+          case 'Widget':
+            var fieldType = getInheritableProperty(annotation, 'FT');
+            if (!isName(fieldType))
               break;
-            case 'GoTo':
-              link.dest = a.get('D');
-              break;
-            default:
-              TODO('other link types');
-          }
-        } else if (annotation.has('Dest')) {
-          // simple destination link
-          var dest = annotation.get('Dest');
-          link.dest = isName(dest) ? dest.name : dest;
+            item.fieldType = fieldType.name;
+            // Building the full field name by collecting the field and
+            // its ancestors 'T' properties and joining them using '.'.
+            var fieldName = [];
+            var namedItem = annotation, ref = annotationRef;
+            while (namedItem) {
+              var parentRef = namedItem.get('Parent');
+              var parent = xref.fetchIfRef(parentRef);
+              var name = namedItem.get('T');
+              if (name)
+                fieldName.unshift(stringToPDFString(name));
+              else {
+                // The field name is absent, that means more than one field
+                // with the same name may exist. Replacing the empty name
+                // with the '`' plus index in the parent's 'Kids' array.
+                // This is not in the PDF spec but necessary to id the
+                // the input controls.
+                var kids = xref.fetchIfRef(parent.get('Kids'));
+                var j, jj;
+                for (j = 0, jj = kids.length; j < jj; j++) {
+                  if (kids[j].num == ref.num && kids[j].gen == ref.gen)
+                    break;
+                }
+                fieldName.unshift('`' + j);
+              }
+              namedItem = parent;
+              ref = parentRef;
+            }
+            item.fullName = fieldName.join('.');
+            var alternativeText = stringToPDFString(annotation.get('TU') || '');
+            item.alternativeText = alternativeText;
+            var da = getInheritableProperty(annotation, 'DA') || '';
+            var m = /([\d\.]+)\sTf/.exec(da);
+            if (m)
+              item.fontSize = parseFloat(m[1]);
+            item.textAlignment = getInheritableProperty(annotation, 'Q');
+            item.flags = getInheritableProperty(annotation, 'Ff') || 0;
+            break;
+          case 'Text':
+            var content = annotation.get('Contents');
+            var title = annotation.get('T');
+            item.content = stringToPDFString(content || '');
+            item.title = stringToPDFString(title || '');
+            item.name = annotation.get('Name').name;
+            break;
+          default:
+            TODO('unimplemented annotation type: ' + subtype.name);
+            break;
         }
-        links.push(link);
+        items.push(item);
       }
-      return links;
+      return items;
     },
     startRendering: function pageStartRendering(ctx, callback, textLayer)  {
-      this.ctx = ctx;
-      this.callback = callback;
-      this.textLayer = textLayer;
-
       this.startRenderingTime = Date.now();
-      this.pdf.startRendering(this);
+
+      // If there is no displayReadyPromise yet, then the IRQueue was never
+      // requested before. Make the request and create the promise.
+      if (!this.displayReadyPromise) {
+        this.pdf.startRendering(this);
+        this.displayReadyPromise = new Promise();
+      }
+
+      // Once the IRQueue and fonts are loaded, perform the actual rendering.
+      this.displayReadyPromise.then(
+        function pageDisplayReadyPromise() {
+          var gfx = new CanvasGraphics(ctx, this.objs, textLayer);
+          try {
+            this.display(gfx, callback);
+          } catch (e) {
+            if (callback)
+              callback(e);
+            else
+              error(e);
+          }
+        }.bind(this),
+        function pageDisplayReadPromiseError(reason) {
+          if (callback)
+            callback(reason);
+          else
+            error(reason);
+        }
+      );
     }
   };
 
-  return constructor;
+  return Page;
 })();
 
 /**
@@ -342,8 +442,8 @@ var Page = (function pagePage() {
  * need for the `PDFDocModel` anymore and there is only one object on the
  * main thread and not one entire copy on each worker instance.
  */
-var PDFDocModel = (function pdfDoc() {
-  function constructor(arg, callback) {
+var PDFDocModel = (function PDFDocModelClosure() {
+  function PDFDocModel(arg, callback) {
     if (isStream(arg))
       init.call(this, arg);
     else if (isArrayBuffer(arg))
@@ -356,6 +456,7 @@ var PDFDocModel = (function pdfDoc() {
     assertWellFormed(stream.length > 0, 'stream must have data');
     this.stream = stream;
     this.setup();
+    this.acroForm = this.xref.fetchIfRef(this.catalog.catDict.get('AcroForm'));
   }
 
   function find(stream, needle, limit, backwards) {
@@ -374,7 +475,7 @@ var PDFDocModel = (function pdfDoc() {
     return true; /* found */
   }
 
-  constructor.prototype = {
+  PDFDocModel.prototype = {
     get linearization() {
       var length = this.stream.length;
       var linearization = false;
@@ -396,12 +497,17 @@ var PDFDocModel = (function pdfDoc() {
         if (find(stream, 'endobj', 1024))
           startXRef = stream.pos + 6;
       } else {
-        // Find startxref at the end of the file.
-        var start = stream.end - 1024;
-        if (start < 0)
-          start = 0;
-        stream.pos = start;
-        if (find(stream, 'startxref', 1024, true)) {
+        // Find startxref by jumping backward from the end of the file.
+        var step = 1024;
+        var found = false, pos = stream.end;
+        while (!found && pos > 0) {
+          pos -= step - 'startxref'.length;
+          if (pos < 0)
+            pos = 0;
+          stream.pos = pos;
+          found = find(stream, 'startxref', step, true);
+        }
+        if (found) {
           stream.skip(9);
           var ch;
           do {
@@ -442,10 +548,19 @@ var PDFDocModel = (function pdfDoc() {
     },
     setup: function pdfDocSetup(ownerPassword, userPassword) {
       this.checkHeader();
-      this.xref = new XRef(this.stream,
-                           this.startXRef,
-                           this.mainXRefEntriesOffset);
-      this.catalog = new Catalog(this.xref);
+      var xref = new XRef(this.stream,
+                          this.startXRef,
+                          this.mainXRefEntriesOffset);
+      this.xref = xref;
+      this.catalog = new Catalog(xref);
+      if (xref.trailer && xref.trailer.has('ID')) {
+        var fileID = '';
+        var id = xref.fetchIfRef(xref.trailer.get('ID'))[0];
+        id.split('').forEach(function(el) {
+          fileID += Number(el.charCodeAt(0)).toString(16);
+        });
+        this.fileID = fileID;
+      }
     },
     get numPages() {
       var linearization = this.linearization;
@@ -453,16 +568,32 @@ var PDFDocModel = (function pdfDoc() {
       // shadow the prototype getter
       return shadow(this, 'numPages', num);
     },
+    getFingerprint: function pdfDocGetFingerprint() {
+      if (this.fileID) {
+        return this.fileID;
+      } else {
+        // If we got no fileID, then we generate one,
+        // from the first 100 bytes of PDF
+        var data = this.stream.bytes.subarray(0, 100);
+        var hash = calculateMD5(data, 0, data.length);
+        var strHash = '';
+        for (var i = 0, length = hash.length; i < length; i++) {
+          strHash += Number(hash[i]).toString(16);
+        }
+
+        return strHash;
+      }
+    },
     getPage: function pdfDocGetPage(n) {
       return this.catalog.getPage(n);
     }
   };
 
-  return constructor;
+  return PDFDocModel;
 })();
 
-var PDFDoc = (function pdfDoc() {
-  function constructor(arg, callback) {
+var PDFDoc = (function PDFDocClosure() {
+  function PDFDoc(arg, callback) {
     var stream = null;
     var data = null;
 
@@ -479,7 +610,7 @@ var PDFDoc = (function pdfDoc() {
     this.data = data;
     this.stream = stream;
     this.pdf = new PDFDocModel(stream);
-
+    this.fingerprint = this.pdf.getFingerprint();
     this.catalog = this.pdf.catalog;
     this.objs = new PDFObjects();
 
@@ -495,42 +626,52 @@ var PDFDoc = (function pdfDoc() {
     if (!globalScope.PDFJS.disableWorker && typeof Worker !== 'undefined') {
       var workerSrc = PDFJS.workerSrc;
       if (typeof workerSrc === 'undefined') {
-        throw 'No PDFJS.workerSrc specified';
+        error('No PDFJS.workerSrc specified');
       }
 
-      var worker;
       try {
-        worker = new Worker(workerSrc);
-      } catch (e) {
-        // Some versions of FF can't create a worker on localhost, see:
-        // https://bugzilla.mozilla.org/show_bug.cgi?id=683280
-        globalScope.PDFJS.disableWorker = true;
-        this.setupFakeWorker();
-        return;
-      }
-
-      var messageHandler = new MessageHandler('main', worker);
-
-      // Tell the worker the file it was created from.
-      messageHandler.send('workerSrc', workerSrc);
-
-      messageHandler.on('test', function pdfDocTest(supportTypedArray) {
-        if (supportTypedArray) {
-          this.worker = worker;
-          this.setupMessageHandler(messageHandler);
+        var worker;
+        if (PDFJS.isFirefoxExtension) {
+          // The firefox extension can't load the worker from the resource://
+          // url so we have to inline the script and then use the blob loader.
+          var bb = new MozBlobBuilder();
+          bb.append(document.querySelector('#PDFJS_SCRIPT_TAG').textContent);
+          var blobUrl = window.URL.createObjectURL(bb.getBlob());
+          worker = new Worker(blobUrl);
         } else {
-          this.setupFakeWorker();
+          // Some versions of FF can't create a worker on localhost, see:
+          // https://bugzilla.mozilla.org/show_bug.cgi?id=683280
+          worker = new Worker(workerSrc);
         }
-      }.bind(this));
 
-      var testObj = new Uint8Array(1);
-      messageHandler.send('test', testObj);
-    } else {
-      this.setupFakeWorker();
+        var messageHandler = new MessageHandler('main', worker);
+
+        messageHandler.on('test', function pdfDocTest(supportTypedArray) {
+          if (supportTypedArray) {
+            this.worker = worker;
+            this.setupMessageHandler(messageHandler);
+          } else {
+            globalScope.PDFJS.disableWorker = true;
+            this.setupFakeWorker();
+          }
+        }.bind(this));
+
+        var testObj = new Uint8Array(1);
+        // Some versions of Opera throw a DATA_CLONE_ERR on
+        // serializing the typed array.
+        messageHandler.send('test', testObj);
+        return;
+      } catch (e) {
+        warn('The worker has been disabled.');
+      }
     }
+    // Either workers are disabled, not supported or have thrown an exception.
+    // Thus, we fallback to a faked worker.
+    globalScope.PDFJS.disableWorker = true;
+    this.setupFakeWorker();
   }
 
-  constructor.prototype = {
+  PDFDoc.prototype = {
     setupFakeWorker: function() {
       // If we don't use a worker, just post/sendMessage to the main thread.
       var fakeWorker = {
@@ -566,8 +707,12 @@ var PDFDoc = (function pdfDoc() {
 
         switch (type) {
           case 'JpegStream':
-            var IR = data[2];
-            new JpegImageLoader(id, IR, this.objs);
+            var imageData = data[2];
+            loadJpegStream(id, imageData, this.objs);
+            break;
+          case 'Image':
+            var imageData = data[2];
+            this.objs.resolve(id, imageData);
             break;
           case 'Font':
             var name = data[2];
@@ -589,7 +734,7 @@ var PDFDoc = (function pdfDoc() {
             });
             break;
           default:
-            throw 'Got unkown object type ' + type;
+            error('Got unkown object type ' + type);
         }
       }, this);
 
@@ -607,11 +752,46 @@ var PDFDoc = (function pdfDoc() {
 
       messageHandler.on('page_error', function pdfDocError(data) {
         var page = this.pageCache[data.pageNum];
-        if (page.callback)
-          page.callback(data.error);
+        if (page.displayReadyPromise)
+          page.displayReadyPromise.reject(data.error);
         else
-          throw data.error;
+          error(data.error);
       }, this);
+
+      messageHandler.on('jpeg_decode', function(data, promise) {
+        var imageData = data[0];
+        var components = data[1];
+        if (components != 3 && components != 1)
+          error('Only 3 component or 1 component can be returned');
+
+        var img = new Image();
+        img.onload = (function jpegImageLoaderOnload() {
+          var width = img.width;
+          var height = img.height;
+          var size = width * height;
+          var rgbaLength = size * 4;
+          var buf = new Uint8Array(size * components);
+          var tmpCanvas = new ScratchCanvas(width, height);
+          var tmpCtx = tmpCanvas.getContext('2d');
+          tmpCtx.drawImage(img, 0, 0);
+          var data = tmpCtx.getImageData(0, 0, width, height).data;
+
+          if (components == 3) {
+            for (var i = 0, j = 0; i < rgbaLength; i += 4, j += 3) {
+              buf[j] = data[i];
+              buf[j + 1] = data[i + 1];
+              buf[j + 2] = data[i + 2];
+            }
+          } else if (components == 1) {
+            for (var i = 0, j = 0; i < rgbaLength; i += 4, j++) {
+              buf[j] = data[i];
+            }
+          }
+          promise.resolve({ data: buf, width: width, height: height});
+        }).bind(this);
+        var src = 'data:image/jpeg;base64,' + window.btoa(imageData);
+        img.src = src;
+      });
 
       setTimeout(function pdfDocFontReadySetTimeout() {
         messageHandler.send('doc', this.data);
@@ -659,7 +839,7 @@ var PDFDoc = (function pdfDoc() {
     }
   };
 
-  return constructor;
+  return PDFDoc;
 })();
 
 globalScope.PDFJS.PDFDoc = PDFDoc;

@@ -3,8 +3,6 @@
 
 'use strict';
 
-var isWorker = (typeof window == 'undefined');
-
 /**
  * Maximum time to wait for a font to be loaded by font-face rules.
  */
@@ -20,6 +18,18 @@ var kPDFGlyphSpaceUnits = 1000;
 
 // Until hinting is fully supported this constant can be used
 var kHintingEnabled = false;
+
+var FontFlags = {
+  FixedPitch: 1,
+  Serif: 2,
+  Symbolic: 4,
+  Script: 8,
+  Nonsymbolic: 32,
+  Italic: 64,
+  AllCap: 65536,
+  SmallCap: 131072,
+  ForceBold: 262144
+};
 
 var Encodings = {
   get ExpertEncoding() {
@@ -162,19 +172,20 @@ var Encodings = {
       'bracketleft', 'backslash', 'bracketright', 'asciicircum', 'underscore',
       'quoteleft', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l',
       'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-      'braceleft', 'bar', 'braceright', 'asciitilde', '', '', 'exclamdown',
-      'cent', 'sterling', 'fraction', 'yen', 'florin', 'section', 'currency',
-      'quotesingle', 'quotedblleft', 'guillemotleft', 'guilsinglleft',
-      'guilsinglright', 'fi', 'fl', '', 'endash', 'dagger', 'daggerdbl',
-      'periodcentered', '', 'paragraph', 'bullet', 'quotesinglbase',
-      'quotedblbase', 'quotedblright', 'guillemotright', 'ellipsis',
-      'perthousand', '', 'questiondown', '', 'grave', 'acute', 'circumflex',
-      'tilde', 'macron', 'breve', 'dotaccent', 'dieresis', '', 'ring',
-      'cedilla', '', 'hungarumlaut', 'ogonek', 'caron', 'emdash', '', '', '',
-      '', '', '', '', '', '', '', '', '', '', '', '', '', 'AE', '',
-      'ordfeminine', '', '', '', '', 'Lslash', 'Oslash', 'OE', 'ordmasculine',
-      '', '', '', '', '', 'ae', '', '', '', 'dotlessi', '', '', 'lslash',
-      'oslash', 'oe', 'germandbls'
+      'braceleft', 'bar', 'braceright', 'asciitilde', '', '', '', '', '', '',
+      '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
+      '', '', '', '', '', '', '', '', '', '', 'exclamdown', 'cent', 'sterling',
+      'fraction', 'yen', 'florin', 'section', 'currency', 'quotesingle',
+      'quotedblleft', 'guillemotleft', 'guilsinglleft', 'guilsinglright', 'fi',
+      'fl', '', 'endash', 'dagger', 'daggerdbl', 'periodcentered', '',
+      'paragraph', 'bullet', 'quotesinglbase', 'quotedblbase', 'quotedblright',
+      'guillemotright', 'ellipsis', 'perthousand', '', 'questiondown', '',
+      'grave', 'acute', 'circumflex', 'tilde', 'macron', 'breve', 'dotaccent',
+      'dieresis', '', 'ring', 'cedilla', '', 'hungarumlaut', 'ogonek', 'caron',
+      'emdash', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
+      'AE', '', 'ordfeminine', '', '', '', '', 'Lslash', 'Oslash', 'OE',
+      'ordmasculine', '', '', '', '', '', 'ae', '', '', '', 'dotlessi', '', '',
+      'lslash', 'oslash', 'oe', 'germandbls'
     ]);
   },
   get WinAnsiEncoding() {
@@ -341,6 +352,21 @@ var stdFontMap = {
   'TimesNewRomanPSMT-Italic': 'Times-Italic'
 };
 
+/**
+ * Holds the map of the non-standard fonts that might be included as a standard
+ * fonts without glyph data.
+ */
+var nonStdFontMap = {
+  'ComicSansMS': 'Comic Sans MS',
+  'ComicSansMS-Bold': 'Comic Sans MS-Bold',
+  'ComicSansMS-BoldItalic': 'Comic Sans MS-BoldItalic',
+  'ComicSansMS-Italic': 'Comic Sans MS-Italic',
+  'LucidaConsole': 'Courier',
+  'LucidaConsole-Bold': 'Courier-Bold',
+  'LucidaConsole-BoldItalic': 'Courier-BoldOblique',
+  'LucidaConsole-Italic': 'Courier-Oblique'
+};
+
 var serifFonts = {
   'Adobe Jenson': true, 'Adobe Text': true, 'Albertus': true,
   'Aldus': true, 'Alexandria': true, 'Algerian': true,
@@ -387,6 +413,23 @@ var serifFonts = {
   'Versailles': true, 'Wanted': true, 'Weiss': true,
   'Wide Latin': true, 'Windsor': true, 'XITS': true
 };
+
+var symbolsFonts = {
+  'Dingbats': true, 'Symbol': true, 'ZapfDingbats': true
+};
+
+// Some characters, e.g. copyrightserif, mapped to the private use area and
+// might not be displayed using standard fonts. Mapping/hacking well-known chars
+// to the similar equivalents in the normal characters range.
+function mapPrivateUseChars(code) {
+  switch (code) {
+    case 0xF8E9: // copyrightsans
+    case 0xF6D9: // copyrightserif
+      return 0x00A9; // copyright
+    default:
+      return code;
+  }
+}
 
 var FontLoader = {
   listeningForFontLoad: false,
@@ -733,8 +776,8 @@ function isSpecialUnicode(unicode) {
  *   var type1Font = new Font("MyFontName", binaryFile, propertiesObject);
  *   type1Font.bind();
  */
-var Font = (function Font() {
-  var constructor = function font_constructor(name, file, properties) {
+var Font = (function FontClosure() {
+  function Font(name, file, properties) {
     this.name = name;
     this.coded = properties.coded;
     this.charProcIRQueues = properties.charProcIRQueues;
@@ -744,7 +787,8 @@ var Font = (function Font() {
     var names = name.split('+');
     names = names.length > 1 ? names[1] : names[0];
     names = names.split(/[-,_]/g)[0];
-    this.serif = serifFonts[names] || (name.search(/serif/gi) != -1);
+    this.isSerifFont = !!(properties.flags & FontFlags.Serif);
+    this.isSymbolicFont = !!(properties.flags & FontFlags.Symbolic);
 
     var type = properties.type;
     this.type = type;
@@ -752,7 +796,7 @@ var Font = (function Font() {
     // If the font is to be ignored, register it like an already loaded font
     // to avoid the cost of waiting for it be be loaded by the platform.
     if (properties.ignore) {
-      this.loadedName = this.serif ? 'serif' : 'sans-serif';
+      this.loadedName = this.isSerifFont ? 'serif' : 'sans-serif';
       this.loading = false;
       return;
     }
@@ -765,8 +809,10 @@ var Font = (function Font() {
 
     this.fontMatrix = properties.fontMatrix;
     this.widthMultiplier = 1.0;
-    if (properties.type == 'Type3')
+    if (properties.type == 'Type3') {
+      this.encoding = properties.baseEncoding;
       return;
+    }
 
     // Trying to fix encoding using glyph CIDSystemInfo.
     this.loadCidToUnicode(properties);
@@ -780,7 +826,7 @@ var Font = (function Font() {
       // The file data is not specified. Trying to fix the font name
       // to be used with the canvas.font.
       var fontName = name.replace(/[,_]/g, '-');
-      fontName = stdFontMap[fontName] || fontName;
+      fontName = stdFontMap[fontName] || nonStdFontMap[fontName] || fontName;
 
       this.bold = (fontName.search(/bold/gi) != -1);
       this.italic = (fontName.search(/oblique/gi) != -1) ||
@@ -830,7 +876,6 @@ var Font = (function Font() {
     this.widthMultiplier = !properties.fontMatrix ? 1.0 :
       1.0 / properties.fontMatrix[0];
     this.encoding = properties.baseEncoding;
-    this.hasShortCmap = properties.hasShortCmap;
     this.loadedName = getUniqueName();
     this.loading = true;
   };
@@ -880,6 +925,13 @@ var Font = (function Font() {
   };
 
   function string16(value) {
+    return String.fromCharCode((value >> 8) & 0xff) +
+           String.fromCharCode(value & 0xff);
+  };
+
+  function safeString16(value) {
+    // clamp value to the 16-bit int range
+    value = value > 0x7FFF ? 0x7FFF : value < -0x8000 ? -0x8000 : value;
     return String.fromCharCode((value >> 8) & 0xff) +
            String.fromCharCode(value & 0xff);
   };
@@ -1222,7 +1274,7 @@ var Font = (function Font() {
     return nameTable;
   }
 
-  constructor.prototype = {
+  Font.prototype = {
     name: null,
     font: null,
     mimetype: null,
@@ -1758,7 +1810,7 @@ var Font = (function Font() {
         var hasShortCmap = !!cmapTable.hasShortCmap;
         var toUnicode = this.toUnicode;
 
-        if (hasShortCmap && toUnicode) {
+        if (toUnicode && toUnicode.length > 0) {
           // checking if cmap is just identity map
           var isIdentity = true;
           for (var i = 0, ii = glyphs.length; i < ii; i++) {
@@ -1769,14 +1821,62 @@ var Font = (function Font() {
           }
           // if it is, replacing with meaningful toUnicode values
           if (isIdentity) {
+            var usedUnicodes = [], unassignedUnicodeItems = [];
             for (var i = 0, ii = glyphs.length; i < ii; i++) {
-              var unicode = toUnicode[i + 1] || i + 1;
+              var unicode = toUnicode[i + 1];
+              if (!unicode || unicode in usedUnicodes) {
+                unassignedUnicodeItems.push(i);
+                continue;
+              }
               glyphs[i].unicode = unicode;
+              usedUnicodes[unicode] = true;
+            }
+            var unusedUnicode = kCmapGlyphOffset;
+            for (var j = 0, jj = unassignedUnicodeItems.length; j < jj; j++) {
+              var i = unassignedUnicodeItems[j];
+              while (unusedUnicode in usedUnicodes)
+                unusedUnicode++;
+              var cid = i + 1;
+              // override only if unicode mapping is not specified
+              if (!(cid in toUnicode))
+                toUnicode[cid] = unusedUnicode;
+              glyphs[i].unicode = unusedUnicode++;
             }
             this.useToUnicode = true;
           }
         }
-        properties.hasShortCmap = hasShortCmap;
+
+        if (hasShortCmap && this.hasEncoding && !this.isSymbolicFont) {
+          // Re-encode short map encoding to unicode -- that simplifies the
+          // resolution of MacRoman encoded glyphs logic for TrueType fonts:
+          // copying all characters to private use area, all mapping all known
+          // glyphs to the unicodes. The glyphs and ids arrays will grow.
+          var usedUnicodes = [];
+          for (var i = 0, ii = glyphs.length; i < ii; i++) {
+            var code = glyphs[i].unicode;
+            glyphs[i].unicode += kCmapGlyphOffset;
+
+            var glyphName = properties.baseEncoding[code];
+            if (glyphName in GlyphsUnicode) {
+              var unicode = GlyphsUnicode[glyphName];
+              if (unicode in usedUnicodes)
+                continue;
+
+              usedUnicodes[unicode] = true;
+              glyphs.push({
+                unicode: unicode,
+                code: glyphs[i].code
+              });
+              ids.push(ids[i]);
+            }
+          }
+        }
+
+        // remove glyph references outside range of avaialable glyphs
+        for (var i = 0, ii = ids.length; i < ii; i++) {
+          if (ids[i] >= numGlyphs)
+            ids[i] = 0;
+        }
 
         createGlyphNameMap(glyphs, ids, properties);
         this.glyphNameMap = properties.glyphNameMap;
@@ -1903,9 +2003,9 @@ var Font = (function Font() {
               '\x00\x00\x00\x00\x9e\x0b\x7e\x27' + // creation date
               '\x00\x00\x00\x00\x9e\x0b\x7e\x27' + // modifification date
               '\x00\x00' + // xMin
-              string16(properties.descent) + // yMin
+              safeString16(properties.descent) + // yMin
               '\x0F\xFF' + // xMax
-              string16(properties.ascent) + // yMax
+              safeString16(properties.ascent) + // yMax
               string16(properties.italicAngle ? 2 : 0) + // macStyle
               '\x00\x11' + // lowestRecPPEM
               '\x00\x00' + // fontDirectionHint
@@ -1917,15 +2017,15 @@ var Font = (function Font() {
         'hhea': (function fontFieldsHhea() {
           return stringToArray(
               '\x00\x01\x00\x00' + // Version number
-              string16(properties.ascent) + // Typographic Ascent
-              string16(properties.descent) + // Typographic Descent
+              safeString16(properties.ascent) + // Typographic Ascent
+              safeString16(properties.descent) + // Typographic Descent
               '\x00\x00' + // Line Gap
               '\xFF\xFF' + // advanceWidthMax
               '\x00\x00' + // minLeftSidebearing
               '\x00\x00' + // minRightSidebearing
               '\x00\x00' + // xMaxExtent
-              string16(properties.capHeight) + // caretSlopeRise
-              string16(Math.tan(properties.italicAngle) *
+              safeString16(properties.capHeight) + // caretSlopeRise
+              safeString16(Math.tan(properties.italicAngle) *
                        properties.xHeight) + // caretSlopeRun
               '\x00\x00' + // caretOffset
               '\x00\x00' + // -reserved-
@@ -2062,13 +2162,45 @@ var Font = (function Font() {
                  window.btoa(data) + ');');
       var rule = "@font-face { font-family:'" + fontName + "';src:" + url + '}';
 
-      document.documentElement.firstChild.appendChild(
-        document.createElement('style'));
+      var styleElement = document.createElement('style');
+      document.documentElement.getElementsByTagName('head')[0].appendChild(
+        styleElement);
 
-      var styleSheet = document.styleSheets[document.styleSheets.length - 1];
+      var styleSheet = styleElement.sheet;
       styleSheet.insertRule(rule, styleSheet.cssRules.length);
 
       return rule;
+    },
+
+    get spaceWidth() {
+      // trying to estimate space character width
+      var possibleSpaceReplacements = ['space', 'minus', 'one', 'i'];
+      var width;
+      for (var i = 0, ii = possibleSpaceReplacements.length; i < ii; i++) {
+        var glyphName = possibleSpaceReplacements[i];
+        // if possible, getting width by glyph name
+        if (glyphName in this.widths) {
+          width = this.widths[glyphName];
+          break;
+        }
+        var glyphUnicode = GlyphsUnicode[glyphName];
+        // finding the charcode via unicodeToCID map
+        var charcode = 0;
+        if (this.composite)
+          charcode = this.unicodeToCID[glyphUnicode];
+        // ... via toUnicode map
+        if (!charcode && 'toUnicode' in this)
+          charcode = this.toUnicode.indexOf(glyphUnicode);
+        // setting it to unicode if negative or undefined
+        if (!(charcode > 0))
+          charcode = glyphUnicode;
+        // trying to get width via charcode
+        width = this.widths[charcode];
+        if (width)
+          break; // the non-zero width found
+      }
+      width = (width || this.defaultWidth) * this.widthMultiplier;
+      return shadow(this, 'spaceWidth', width);
     },
 
     charToGlyph: function fonts_charToGlyph(charcode) {
@@ -2080,7 +2212,7 @@ var Font = (function Font() {
         case 'CIDFontType0':
           if (this.noUnicodeAdaptation) {
             width = this.widths[this.unicodeToCID[charcode] || charcode];
-            unicode = charcode;
+            unicode = mapPrivateUseChars(charcode);
             break;
           }
           unicode = this.toUnicode[charcode] || charcode;
@@ -2088,17 +2220,17 @@ var Font = (function Font() {
         case 'CIDFontType2':
           if (this.noUnicodeAdaptation) {
             width = this.widths[this.unicodeToCID[charcode] || charcode];
-            unicode = charcode;
+            unicode = mapPrivateUseChars(charcode);
             break;
           }
           unicode = this.toUnicode[charcode] || charcode;
           break;
         case 'Type1':
           var glyphName = this.differences[charcode] || this.encoding[charcode];
+          if (!isNum(width))
+            width = this.widths[glyphName];
           if (this.noUnicodeAdaptation) {
-            if (!isNum(width))
-              width = this.widths[glyphName];
-            unicode = GlyphsUnicode[glyphName] || charcode;
+            unicode = mapPrivateUseChars(GlyphsUnicode[glyphName] || charcode);
             break;
           }
           unicode = this.glyphNameMap[glyphName] ||
@@ -2110,6 +2242,10 @@ var Font = (function Font() {
           unicode = charcode;
           break;
         case 'TrueType':
+          if (this.useToUnicode) {
+            unicode = this.toUnicode[charcode] || charcode;
+            break;
+          }
           var glyphName = this.differences[charcode] || this.encoding[charcode];
           if (!glyphName)
             glyphName = Encodings.StandardEncoding[charcode];
@@ -2119,26 +2255,22 @@ var Font = (function Font() {
             unicode = GlyphsUnicode[glyphName] || charcode;
             break;
           }
-          if (!this.hasEncoding) {
+          if (!this.hasEncoding || this.isSymbolicFont) {
             unicode = this.useToUnicode ? this.toUnicode[charcode] : charcode;
             break;
           }
-          if (this.hasShortCmap && false) {
-            var j = Encodings.MacRomanEncoding.indexOf(glyphName);
-            unicode = j >= 0 ? j :
-              this.glyphNameMap[glyphName];
-          } else {
-            unicode = glyphName in GlyphsUnicode ?
-              GlyphsUnicode[glyphName] :
-              this.glyphNameMap[glyphName];
-          }
+
+          // MacRoman encoding address by re-encoding the cmap table
+          unicode = glyphName in this.glyphNameMap ?
+            this.glyphNameMap[glyphName] : GlyphsUnicode[glyphName];
           break;
         default:
           warn('Unsupported font type: ' + this.type);
           break;
       }
 
-      var unicodeChars = this.toUnicode ? this.toUnicode[charcode] : charcode;
+      var unicodeChars = !('toUnicode' in this) ? charcode :
+        this.toUnicode[charcode] || charcode;
       if (typeof unicodeChars === 'number')
         unicodeChars = String.fromCharCode(unicodeChars);
 
@@ -2152,7 +2284,7 @@ var Font = (function Font() {
       };
     },
 
-    charsToGlyphs: function fonts_chars2Glyphs(chars) {
+    charsToGlyphs: function fonts_charsToGlyphs(chars) {
       var charsCache = this.charsCache;
       var glyphs;
 
@@ -2200,7 +2332,7 @@ var Font = (function Font() {
     }
   };
 
-  return constructor;
+  return Font;
 })();
 
 /*
@@ -3110,9 +3242,9 @@ CFF.prototype = {
   }
 };
 
-var Type2CFF = (function type2CFF() {
+var Type2CFF = (function Type2CFFClosure() {
   // TODO: replace parsing code with the Type2Parser in font_utils.js
-  function constructor(file, properties) {
+  function Type2CFF(file, properties) {
     var bytes = file.getBytes();
     this.bytes = bytes;
     this.properties = properties;
@@ -3120,7 +3252,7 @@ var Type2CFF = (function type2CFF() {
     this.data = this.parse();
   }
 
-  constructor.prototype = {
+  Type2CFF.prototype = {
     parse: function cff_parse() {
       var header = this.parseHeader();
       var properties = this.properties;
@@ -3233,15 +3365,9 @@ var Type2CFF = (function type2CFF() {
         inverseEncoding[encoding[charcode]] = charcode | 0;
       for (var i = 0, ii = charsets.length; i < ii; i++) {
         var glyph = charsets[i];
-        if (glyph == '.notdef') {
-          charstrings.push({
-            unicode: 0,
-            code: 0,
-            gid: i,
-            glyph: glyph
-          });
+        if (glyph == '.notdef')
           continue;
-        }
+
         var code = inverseEncoding[i];
         if (!code || isSpecialUnicode(code)) {
           unassignedUnicodeItems.push(i);
@@ -3664,6 +3790,6 @@ var Type2CFF = (function type2CFF() {
     }
   };
 
-  return constructor;
+  return Type2CFF;
 })();
 

@@ -78,6 +78,14 @@ function cleanup() {
   }
 }
 
+function exceptionToString(e) {
+  if (typeof e !== 'object')
+    return String(e);
+  if (!('message' in e))
+    return JSON.stringify(e);
+  return e.message + ('stack' in e ? ' at ' + e.stack.split('\n')[0] : '');
+}
+
 function nextTask() {
   cleanup();
 
@@ -95,7 +103,7 @@ function nextTask() {
     try {
       task.pdfDoc = new PDFJS.PDFDoc(data);
     } catch (e) {
-      failure = 'load PDF doc : ' + e.toString();
+      failure = 'load PDF doc : ' + exceptionToString(e);
     }
     task.pageNum = task.firstPage || 1;
     nextPage(task, failure);
@@ -139,6 +147,11 @@ function nextPage(task, loadError) {
   if (task.skipPages && task.skipPages.indexOf(task.pageNum) >= 0) {
     log(' skipping page ' + task.pageNum + '/' + task.pdfDoc.numPages +
         '... ');
+    // empty the canvas
+    canvas.width = 1;
+    canvas.height = 1;
+    clear(canvas.getContext('2d'));
+
     snapshotCurrentPage(task, '');
     return;
   }
@@ -160,6 +173,15 @@ function nextPage(task, loadError) {
       canvas.height = pageHeight * pdfToCssUnitsCoef;
       clear(ctx);
 
+      // using the text layer builder that does nothing to test
+      // text layer creation operations
+      var textLayerBuilder = {
+        beginLayout: function nullTextLayerBuilderBeginLayout() {},
+        endLayout: function nullTextLayerBuilderEndLayout() {},
+        appendText: function nullTextLayerBuilderAppendText(text, fontName,
+                                                            fontSize) {}
+      };
+
       page.startRendering(
         ctx,
         function nextPageStartRendering(error) {
@@ -167,10 +189,11 @@ function nextPage(task, loadError) {
           if (error)
             failureMessage = 'render : ' + error.message;
           snapshotCurrentPage(task, failureMessage);
-        }
+        },
+        textLayerBuilder
       );
     } catch (e) {
-      failure = 'page setup : ' + e.toString();
+      failure = 'page setup : ' + exceptionToString(e);
     }
   }
 

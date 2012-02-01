@@ -6,6 +6,8 @@
 function MessageHandler(name, comObj) {
   this.name = name;
   this.comObj = comObj;
+  this.callbackIndex = 1;
+  var callbacks = this.callbacks = {};
   var ah = this.actionHandler = {};
 
   ah['console_log'] = [function ahConsoleLog(data) {
@@ -14,13 +16,35 @@ function MessageHandler(name, comObj) {
   ah['console_error'] = [function ahConsoleError(data) {
       console.error.apply(console, data);
   }];
+
   comObj.onmessage = function messageHandlerComObjOnMessage(event) {
     var data = event.data;
-    if (data.action in ah) {
+    if (data.isReply) {
+      var callbackId = data.callbackId;
+      if (data.callbackId in callbacks) {
+        var callback = callbacks[callbackId];
+        delete callbacks[callbackId];
+        callback(data.data);
+      } else {
+        error('Cannot resolve callback ' + callbackId);
+      }
+    } else if (data.action in ah) {
       var action = ah[data.action];
-      action[0].call(action[1], data.data);
+      if (data.callbackId) {
+        var promise = new Promise();
+        promise.then(function(resolvedData) {
+          comObj.postMessage({
+            isReply: true,
+            callbackId: data.callbackId,
+            data: resolvedData
+          });
+        });
+        action[0].call(action[1], data.data, promise);
+      } else {
+        action[0].call(action[1], data.data);
+      }
     } else {
-      throw 'Unkown action from worker: ' + data.action;
+      error('Unkown action from worker: ' + data.action);
     }
   };
 }
@@ -29,16 +53,27 @@ MessageHandler.prototype = {
   on: function messageHandlerOn(actionName, handler, scope) {
     var ah = this.actionHandler;
     if (ah[actionName]) {
-      throw 'There is already an actionName called "' + actionName + '"';
+      error('There is already an actionName called "' + actionName + '"');
     }
     ah[actionName] = [handler, scope];
   },
-
-  send: function messageHandlerSend(actionName, data) {
-    this.comObj.postMessage({
+  /**
+   * Sends a message to the comObj to invoke the action with the supplied data.
+   * @param {String} actionName Action to call.
+   * @param {JSON} data JSON data to send.
+   * @param {function} [callback] Optional callback that will handle a reply.
+   */
+  send: function messageHandlerSend(actionName, data, callback) {
+    var message = {
       action: actionName,
       data: data
-    });
+    };
+    if (callback) {
+      var callbackId = this.callbackIndex++;
+      this.callbacks[callbackId] = callback;
+      message.callbackId = callbackId;
+    }
+    this.comObj.postMessage(message);
   }
 };
 
@@ -48,13 +83,6 @@ var WorkerMessageHandler = {
 
     handler.on('test', function wphSetupTest(data) {
       handler.send('test', data instanceof Uint8Array);
-    });
-
-    handler.on('workerSrc', function wphSetupWorkerSrc(data) {
-      // In development, the `workerSrc` message is handled in the
-      // `worker_loader.js` file. In production the workerProcessHandler is
-      // called for this. This servers as a dummy to prevent calling an
-      // undefined action `workerSrc`.
     });
 
     handler.on('doc', function wphSetupDoc(data) {
@@ -83,8 +111,8 @@ var WorkerMessageHandler = {
       } catch (e) {
         // Turn the error into an obj that can be serialized
         e = {
-          message: e.message,
-          stack: e.stack
+          message: typeof e === 'object' ? e.message : e,
+          stack: typeof e === 'object' ? e.stack : null
         };
         handler.send('page_error', {
           pageNum: pageNum,
@@ -180,6 +208,7 @@ var workerConsole = {
       action: 'console_error',
       data: args
     });
+    throw 'pdf.js execution error';
   },
 
   time: function time(name) {
@@ -189,7 +218,7 @@ var workerConsole = {
   timeEnd: function timeEnd(name) {
     var time = consoleTimer[name];
     if (time == null) {
-      throw 'Unkown timer name ' + name;
+      error('Unkown timer name ' + name);
     }
     this.log('Timer:', name, Date.now() - time);
   }

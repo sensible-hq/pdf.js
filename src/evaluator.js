@@ -3,8 +3,8 @@
 
 'use strict';
 
-var PartialEvaluator = (function partialEvaluator() {
-  function constructor(xref, handler, uniquePrefix) {
+var PartialEvaluator = (function PartialEvaluatorClosure() {
+  function PartialEvaluator(xref, handler, uniquePrefix) {
     this.state = new EvalState();
     this.stateStack = [];
 
@@ -111,14 +111,14 @@ var PartialEvaluator = (function partialEvaluator() {
     EX: 'endCompat'
   };
 
-  constructor.prototype = {
+  PartialEvaluator.prototype = {
     getIRQueue: function partialEvaluatorGetIRQueue(stream, resources,
                                     queue, dependency) {
 
       var self = this;
       var xref = this.xref;
       var handler = this.handler;
-      var uniquePrefix = this.uniquePrefix;
+      var uniquePrefix = this.uniquePrefix || '';
 
       function insertDependency(depList) {
         fnArray.push('dependency');
@@ -184,65 +184,57 @@ var PartialEvaluator = (function partialEvaluator() {
         var w = dict.get('Width', 'W');
         var h = dict.get('Height', 'H');
 
-        if (image instanceof JpegStream && image.isNative) {
-          var objId = 'img_' + uniquePrefix + (++self.objIdCounter);
-          handler.send('obj', [objId, 'JpegStream', image.getIR()]);
+        var imageMask = dict.get('ImageMask', 'IM') || false;
+        if (imageMask) {
+          // This depends on a tmpCanvas beeing filled with the
+          // current fillStyle, such that processing the pixel
+          // data can't be done here. Instead of creating a
+          // complete PDFImage, only read the information needed
+          // for later.
 
-          // Add the dependency on the image object.
-          insertDependency([objId]);
+          var width = dict.get('Width', 'W');
+          var height = dict.get('Height', 'H');
+          var bitStrideLength = (width + 7) >> 3;
+          var imgArray = image.getBytes(bitStrideLength * height);
+          var decode = dict.get('Decode', 'D');
+          var inverseDecode = !!decode && decode[0] > 0;
 
-          // The normal fn.
-          fn = 'paintJpegXObject';
-          args = [objId, w, h];
-
+          fn = 'paintImageMaskXObject';
+          args = [imgArray, inverseDecode, width, height];
           return;
         }
-
-        // Needs to be rendered ourself.
-
-        // Figure out if the image has an imageMask.
-        var imageMask = dict.get('ImageMask', 'IM') || false;
 
         // If there is no imageMask, create the PDFImage and a lot
         // of image processing can be done here.
-        if (!imageMask) {
-          var imageObj = new PDFImage(xref, resources, image, inline);
+        var objId = 'img_' + uniquePrefix + (++self.objIdCounter);
+        insertDependency([objId]);
+        args = [objId, w, h];
 
-          if (imageObj.imageMask) {
-            throw 'Can\'t handle this in the web worker :/';
-          }
-
-          var imgData = {
-            width: w,
-            height: h,
-            data: new Uint8Array(w * h * 4)
-          };
-          var pixels = imgData.data;
-          imageObj.fillRgbaBuffer(pixels, imageObj.decode);
-
-          fn = 'paintImageXObject';
-          args = [imgData];
+        var softMask = dict.get('SMask', 'IM') || false;
+        if (!softMask && image instanceof JpegStream &&
+            image.isNativelySupported(xref, resources)) {
+          // These JPEGs don't need any more processing so we can just send it.
+          fn = 'paintJpegXObject';
+          handler.send('obj', [objId, 'JpegStream', image.getIR()]);
           return;
         }
 
-        // This depends on a tmpCanvas beeing filled with the
-        // current fillStyle, such that processing the pixel
-        // data can't be done here. Instead of creating a
-        // complete PDFImage, only read the information needed
-        // for later.
-        fn = 'paintImageMaskXObject';
+        fn = 'paintImageXObject';
 
-        var width = dict.get('Width', 'W');
-        var height = dict.get('Height', 'H');
-        var bitStrideLength = (width + 7) >> 3;
-        var imgArray = image.getBytes(bitStrideLength * height);
-        var decode = dict.get('Decode', 'D');
-        var inverseDecode = !!decode && decode[0] > 0;
-
-        args = [imgArray, inverseDecode, width, height];
+        PDFImage.buildImage(function(imageObj) {
+            var drawWidth = imageObj.drawWidth;
+            var drawHeight = imageObj.drawHeight;
+            var imgData = {
+              width: drawWidth,
+              height: drawHeight,
+              data: new Uint8Array(drawWidth * drawHeight * 4)
+            };
+            var pixels = imgData.data;
+            imageObj.fillRgbaBuffer(pixels, drawWidth, drawHeight);
+            handler.send('obj', [objId, 'Image', imgData]);
+          }, handler, xref, resources, image, inline);
       }
 
-      uniquePrefix = uniquePrefix || '';
       if (!queue.argsArray) {
         queue.argsArray = [];
       }
@@ -300,8 +292,8 @@ var PartialEvaluator = (function partialEvaluator() {
                   // Create an IR of the pattern code.
                   var depIdx = dependencyArray.length;
                   var queueObj = {};
-                  var codeIR = this.getIRQueue(pattern, dict.get('Resources'),
-                                               queueObj, dependencyArray);
+                  var codeIR = this.getIRQueue(pattern, dict.get('Resources') ||
+                      resources, queueObj, dependencyArray);
 
                   // Add the dependencies that are required to execute the
                   // codeIR.
@@ -344,8 +336,8 @@ var PartialEvaluator = (function partialEvaluator() {
                 // This adds the IRQueue of the xObj to the current queue.
                 var depIdx = dependencyArray.length;
 
-                this.getIRQueue(xobj, xobj.dict.get('Resources'), queue,
-                                dependencyArray);
+                this.getIRQueue(xobj, xobj.dict.get('Resources') || resources,
+                    queue, dependencyArray);
 
                // Add the dependencies that are required to execute the
                // codeIR.
@@ -489,8 +481,10 @@ var PartialEvaluator = (function partialEvaluator() {
           properties.cidToGidMap = this.readCidToGidMap(cidToGidMap);
       }
 
+      var flags = properties.flags;
       var differences = [];
-      var baseEncoding = Encodings.StandardEncoding;
+      var baseEncoding = !!(flags & FontFlags.Symbolic) ?
+                         Encodings.symbolsEncoding : Encodings.StandardEncoding;
       var hasEncoding = dict.has('Encoding');
       if (hasEncoding) {
         var encoding = xref.fetchIfRef(dict.get('Encoding'));
@@ -766,10 +760,18 @@ var PartialEvaluator = (function partialEvaluator() {
           baseFontName = baseFontName.name.replace(/[,_]/g, '-');
           var metrics = this.getBaseFontMetrics(baseFontName);
 
+          // Simulating descriptor flags attribute
+          var fontNameWoStyle = baseFontName.split('-')[0];
+          var flags = (serifFonts[fontNameWoStyle] ||
+            (fontNameWoStyle.search(/serif/gi) != -1) ? FontFlags.Serif : 0) |
+            (symbolsFonts[fontNameWoStyle] ? FontFlags.Symbolic :
+            FontFlags.Nonsymbolic);
+
           var properties = {
             type: type.name,
             widths: metrics.widths,
             defaultWidth: metrics.defaultWidth,
+            flags: flags,
             firstChar: 0,
             lastChar: maxCharIndex
           };
@@ -858,11 +860,11 @@ var PartialEvaluator = (function partialEvaluator() {
     }
   };
 
-  return constructor;
+  return PartialEvaluator;
 })();
 
-var EvalState = (function evalState() {
-  function constructor() {
+var EvalState = (function EvalStateClosure() {
+  function EvalState() {
     // Are soft masks and alpha values shapes or opacities?
     this.alphaIsShape = false;
     this.fontSize = 0;
@@ -879,8 +881,8 @@ var EvalState = (function evalState() {
     this.fillColorSpace = null;
     this.strokeColorSpace = null;
   }
-  constructor.prototype = {
+  EvalState.prototype = {
   };
-  return constructor;
+  return EvalState;
 })();
 

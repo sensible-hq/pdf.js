@@ -9,9 +9,10 @@ USAGE_EXAMPLE = "%prog"
 # The local web server uses the git repo as the document root.
 DOC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__),".."))
 
-ANAL = True
+GIT_CLONE_CHECK = True
 DEFAULT_MANIFEST_FILE = 'test_manifest.json'
 EQLOG_FILE = 'eq.log'
+BROWSERLOG_FILE = 'browser.log'
 REFDIR = 'ref'
 TMPDIR = 'tmp'
 VERBOSE = False
@@ -229,6 +230,7 @@ class BaseBrowserCommand(object):
     def setup(self):
         self.tempDir = tempfile.mkdtemp()
         self.profileDir = os.path.join(self.tempDir, "profile")
+        self.browserLog = open(BROWSERLOG_FILE, "w")
 
     def teardown(self):
         # If the browser is still running, wait up to ten seconds for it to quit
@@ -244,6 +246,8 @@ class BaseBrowserCommand(object):
             
         if self.tempDir is not None and os.path.exists(self.tempDir):
             shutil.rmtree(self.tempDir)
+
+        self.browserLog.close()
 
     def start(self, url):
         raise Exception("Can't start BaseBrowserCommand")
@@ -262,7 +266,7 @@ class FirefoxBrowserCommand(BaseBrowserCommand):
         if platform.system() == "Darwin":
             cmds.append("-foreground")
         cmds.extend(["-no-remote", "-profile", self.profileDir, url])
-        self.process = subprocess.Popen(cmds)
+        self.process = subprocess.Popen(cmds, stdout = self.browserLog, stderr = self.browserLog)
 
 class ChromeBrowserCommand(BaseBrowserCommand):
     def _fixupMacPath(self):
@@ -272,7 +276,7 @@ class ChromeBrowserCommand(BaseBrowserCommand):
         cmds = [self.path]
         cmds.extend(["--user-data-dir=%s" % self.profileDir,
                      "--no-first-run", "--disable-sync", url])
-        self.process = subprocess.Popen(cmds)
+        self.process = subprocess.Popen(cmds, stdout = self.browserLog, stderr = self.browserLog)
 
 def makeBrowserCommand(browser):
     path = browser["path"].lower()
@@ -340,7 +344,7 @@ def verifyPDFs(manifestList):
 
 def setUp(options):
     # Only serve files from a pdf.js clone
-    assert not ANAL or os.path.isfile('../src/pdf.js') and os.path.isdir('../.git')
+    assert not GIT_CLONE_CHECK or os.path.isfile('../src/pdf.js') and os.path.isdir('../.git')
 
     if options.masterMode and os.path.isdir(TMPDIR):
         print 'Temporary snapshot dir tmp/ is still around.'

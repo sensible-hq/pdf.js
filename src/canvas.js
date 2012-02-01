@@ -17,8 +17,8 @@ var TextRenderingMode = {
   ADD_TO_PATH: 7
 };
 
-var CanvasExtraState = (function canvasExtraState() {
-  function constructor(old) {
+var CanvasExtraState = (function CanvasExtraStateClosure() {
+  function CanvasExtraState(old) {
     // Are soft masks and alpha values shapes or opacities?
     this.alphaIsShape = false;
     this.fontSize = 0;
@@ -48,11 +48,12 @@ var CanvasExtraState = (function canvasExtraState() {
     // Note: fill alpha applies to all non-stroking operations
     this.fillAlpha = 1;
     this.strokeAlpha = 1;
+    this.lineWidth = 1;
 
     this.old = old;
   }
 
-  constructor.prototype = {
+  CanvasExtraState.prototype = {
     clone: function canvasextra_clone() {
       return Object.create(this);
     },
@@ -61,7 +62,7 @@ var CanvasExtraState = (function canvasExtraState() {
       this.y = y;
     }
   };
-  return constructor;
+  return CanvasExtraState;
 })();
 
 function ScratchCanvas(width, height) {
@@ -181,12 +182,12 @@ function addContextCurrentTransform(ctx) {
   }
 }
 
-var CanvasGraphics = (function canvasGraphics() {
+var CanvasGraphics = (function CanvasGraphicsClosure() {
   // Defines the time the executeIRQueue is going to be executing
   // before it stops and shedules a continue of execution.
   var kExecutionTime = 50;
 
-  function constructor(canvasCtx, objs, textLayer) {
+  function CanvasGraphics(canvasCtx, objs, textLayer) {
     this.ctx = canvasCtx;
     this.current = new CanvasExtraState();
     this.stateStack = [];
@@ -208,7 +209,7 @@ var CanvasGraphics = (function canvasGraphics() {
   var NORMAL_CLIP = {};
   var EO_CLIP = {};
 
-  constructor.prototype = {
+  CanvasGraphics.prototype = {
     slowCommands: {
       'stroke': true,
       'closeStroke': true,
@@ -257,11 +258,11 @@ var CanvasGraphics = (function canvasGraphics() {
       }
       // Scale so that canvas units are the same as PDF user space units
       this.ctx.scale(cw / mediaBox.width, ch / mediaBox.height);
-      this.textDivs = [];
-      this.textLayerQueue = [];
-      // Prevent textLayerQueue from being rendered while rendering a new page
-      if (this.textLayerTimer)
-        clearTimeout(this.textLayerTimer);
+      // Move the media left-top corner to the (0,0) canvas position
+      this.ctx.translate(-mediaBox.x, -mediaBox.y);
+
+      if (this.textLayer)
+        this.textLayer.beginLayout();
     },
 
     executeIRQueue: function canvasGraphicsExecuteIRQueue(codeIR,
@@ -329,40 +330,13 @@ var CanvasGraphics = (function canvasGraphics() {
     endDrawing: function canvasGraphicsEndDrawing() {
       this.ctx.restore();
 
-      var textLayer = this.textLayer;
-      if (!textLayer)
-        return;
-
-      var self = this;
-      var renderTextLayer = function canvasRenderTextLayer() {
-        var textDivs = self.textDivs;
-        for (var i = 0, length = textDivs.length; i < length; ++i) {
-          if (textDivs[i].dataset.textLength > 1) { // avoid div by zero
-            textLayer.appendChild(textDivs[i]);
-            // Adjust div width (via letterSpacing) to match canvas text
-            // Due to the .offsetWidth calls, this is slow
-            textDivs[i].style.letterSpacing =
-              ((textDivs[i].dataset.canvasWidth - textDivs[i].offsetWidth) /
-               (textDivs[i].dataset.textLength - 1)) + 'px';
-          }
-        }
-      }
-      var textLayerQueue = this.textLayerQueue;
-      textLayerQueue.push(renderTextLayer);
-
-      // Lazy textLayer rendering (to prevent UI hangs)
-      // Only render queue if activity has stopped, where "no activity" ==
-      // "no beginDrawing() calls in the last N ms"
-      this.textLayerTimer = setTimeout(function renderTextLayerQueue() {
-        // Render most recent (==most relevant) layers first
-        for (var i = textLayerQueue.length - 1; i >= 0; i--) {
-          textLayerQueue.pop().call();
-        }
-      }, 500);
+      if (this.textLayer)
+        this.textLayer.endLayout();
     },
 
     // Graphics state
     setLineWidth: function canvasGraphicsSetLineWidth(width) {
+      this.current.lineWidth = width;
       this.ctx.lineWidth = width;
     },
     setLineCap: function canvasGraphicsSetLineCap(style) {
@@ -377,6 +351,8 @@ var CanvasGraphics = (function canvasGraphics() {
     setDash: function canvasGraphicsSetDash(dashArray, dashPhase) {
       this.ctx.mozDash = dashArray;
       this.ctx.mozDashOffset = dashPhase;
+      this.ctx.webkitLineDash = dashArray;
+      this.ctx.webkitLineDashOffset = dashPhase;
     },
     setRenderingIntent: function canvasGraphicsSetRenderingIntent(intent) {
       TODO('set rendering intent: ' + intent);
@@ -474,6 +450,8 @@ var CanvasGraphics = (function canvasGraphics() {
       consumePath = typeof consumePath !== 'undefined' ? consumePath : true;
       var ctx = this.ctx;
       var strokeColor = this.current.strokeColor;
+      if (this.current.lineWidth === 0)
+        ctx.lineWidth = this.getSinglePixelWidth();
       // For stroke we want to temporarily change the global alpha to the
       // stroking alpha.
       ctx.globalAlpha = this.current.strokeAlpha;
@@ -576,7 +554,7 @@ var CanvasGraphics = (function canvasGraphics() {
       var fontObj = this.objs.get(fontRefName).fontObj;
 
       if (!fontObj) {
-        throw 'Can\'t find font for ' + fontRefName;
+        error('Can\'t find font for ' + fontRefName);
       }
 
       var name = fontObj.loadedName || 'sans-serif';
@@ -589,7 +567,7 @@ var CanvasGraphics = (function canvasGraphics() {
                                  (fontObj.bold ? 'bold' : 'normal');
 
       var italic = fontObj.italic ? 'italic' : 'normal';
-      var serif = fontObj.serif ? 'serif' : 'sans-serif';
+      var serif = fontObj.isSerifFont ? 'serif' : 'sans-serif';
       var typeface = '"' + name + '", ' + serif;
       var rule = italic + ' ' + bold + ' ' + size + 'px ' + typeface;
       this.ctx.font = rule;
@@ -644,38 +622,10 @@ var CanvasGraphics = (function canvasGraphics() {
         geometry.hScale = tr[0] - bl[0];
         geometry.vScale = tr[1] - bl[1];
       }
-      var spaceGlyph = font.charsToGlyphs(' ');
-
-      // Hack (sometimes space is not encoded)
-      if (spaceGlyph.length === 0 || spaceGlyph[0].width === 0)
-        spaceGlyph = font.charsToGlyphs('i');
-
-      // Fallback
-      if (spaceGlyph.length === 0 || spaceGlyph[0].width === 0)
-        spaceGlyph = [{width: 0}];
-
-      geometry.spaceWidth = spaceGlyph[0].width;
+      geometry.spaceWidth = font.spaceWidth;
       return geometry;
     },
 
-    pushTextDivs: function canvasGraphicsPushTextDivs(text) {
-      var div = document.createElement('div');
-      var fontSize = this.current.fontSize;
-
-      // vScale and hScale already contain the scaling to pixel units
-      // as mozCurrentTransform reflects ctx.scale() changes
-      // (see beginDrawing())
-      var fontHeight = fontSize * text.geom.vScale;
-      div.dataset.canvasWidth = text.canvasWidth * text.geom.hScale;
-
-      div.style.fontSize = fontHeight + 'px';
-      div.style.fontFamily = this.current.font.loadedName || 'sans-serif';
-      div.style.left = text.geom.x + 'px';
-      div.style.top = (text.geom.y - fontHeight) + 'px';
-      div.innerHTML = text.str;
-      div.dataset.textLength = text.length;
-      this.textDivs.push(div);
-    },
     showText: function canvasGraphicsShowText(str, skipTextSelection) {
       var ctx = this.ctx;
       var current = this.current;
@@ -693,13 +643,6 @@ var CanvasGraphics = (function canvasGraphics() {
       var textSelection = textLayer && !skipTextSelection ? true : false;
       var textRenderingMode = current.textRenderingMode;
 
-      if (textSelection) {
-        ctx.save();
-        this.applyTextTransforms();
-        text.geom = this.getTextGeometry();
-        ctx.restore();
-      }
-
       // Type3 fonts - each glyph is a "mini-PDF"
       if (font.coded) {
         ctx.save();
@@ -707,6 +650,13 @@ var CanvasGraphics = (function canvasGraphics() {
         ctx.translate(current.x, current.y);
 
         ctx.scale(textHScale, 1);
+
+        if (textSelection) {
+          this.save();
+          ctx.scale(1, -1);
+          text.geom = this.getTextGeometry();
+          this.restore();
+        }
         for (var i = 0; i < glyphsLength; ++i) {
 
           var glyph = glyphs[i];
@@ -726,7 +676,7 @@ var CanvasGraphics = (function canvasGraphics() {
           var width = transformed[0] * fontSize + charSpacing;
 
           ctx.translate(width, 0);
-          current.x += width * textHScale2;
+          current.x += width * textHScale;
 
           text.str += glyph.unicode;
           text.length++;
@@ -736,6 +686,18 @@ var CanvasGraphics = (function canvasGraphics() {
       } else {
         ctx.save();
         this.applyTextTransforms();
+
+        var lineWidth = current.lineWidth;
+        var scale = Math.abs(current.textMatrix[0] * fontMatrix[0]);
+        if (scale == 0 || lineWidth == 0)
+          lineWidth = this.getSinglePixelWidth();
+        else
+          lineWidth /= scale;
+
+        ctx.lineWidth = lineWidth;
+
+        if (textSelection)
+          text.geom = this.getTextGeometry();
 
         var width = 0;
         for (var i = 0; i < glyphsLength; ++i) {
@@ -770,7 +732,7 @@ var CanvasGraphics = (function canvasGraphics() {
 
           width += charWidth;
 
-          text.str += glyph.unicode === ' ' ? '&nbsp;' : glyph.unicode;
+          text.str += glyph.unicode === ' ' ? '\u00A0' : glyph.unicode;
           text.length++;
           text.canvasWidth += charWidth;
         }
@@ -779,25 +741,33 @@ var CanvasGraphics = (function canvasGraphics() {
       }
 
       if (textSelection)
-        this.pushTextDivs(text);
+        this.textLayer.appendText(text, font.loadedName, fontSize);
 
       return text;
     },
     showSpacedText: function canvasGraphicsShowSpacedText(arr) {
       var ctx = this.ctx;
       var current = this.current;
+      var font = current.font;
       var fontSize = current.fontSize;
-      var textHScale2 = current.textHScale *
-        (current.font.fontMatrix || IDENTITY_MATRIX)[0];
+      var textHScale = current.textHScale;
+      if (!font.coded)
+        textHScale *= (font.fontMatrix || IDENTITY_MATRIX)[0];
       var arrLength = arr.length;
       var textLayer = this.textLayer;
-      var font = current.font;
       var text = {str: '', length: 0, canvasWidth: 0, geom: {}};
       var textSelection = textLayer ? true : false;
 
       if (textSelection) {
         ctx.save();
-        this.applyTextTransforms();
+        // Type3 fonts - each glyph is a "mini-PDF" (see also showText)
+        if (font.coded) {
+          ctx.transform.apply(ctx, current.textMatrix);
+          ctx.scale(1, -1);
+          ctx.translate(current.x, -1 * current.y);
+          ctx.scale(textHScale, 1);
+        } else
+          this.applyTextTransforms();
         text.geom = this.getTextGeometry();
         ctx.restore();
       }
@@ -805,7 +775,7 @@ var CanvasGraphics = (function canvasGraphics() {
       for (var i = 0; i < arrLength; ++i) {
         var e = arr[i];
         if (isNum(e)) {
-          var spacingLength = -e * 0.001 * fontSize * textHScale2;
+          var spacingLength = -e * 0.001 * fontSize * textHScale;
           current.x += spacingLength;
 
           if (textSelection) {
@@ -813,9 +783,10 @@ var CanvasGraphics = (function canvasGraphics() {
             text.canvasWidth += spacingLength;
             if (e < 0 && text.geom.spaceWidth > 0) { // avoid div by zero
               var numFakeSpaces = Math.round(-e / text.geom.spaceWidth);
-              for (var j = 0; j < numFakeSpaces; ++j)
-                text.str += '&nbsp;';
-              text.length += numFakeSpaces > 0 ? 1 : 0;
+              if (numFakeSpaces > 0) {
+                text.str += '\u00A0';
+                text.length++;
+              }
             }
           }
         } else if (isString(e)) {
@@ -823,7 +794,7 @@ var CanvasGraphics = (function canvasGraphics() {
 
           if (textSelection) {
             if (shownText.str === ' ') {
-              text.str += '&nbsp;';
+              text.str += '\u00A0';
             } else {
               text.str += shownText.str;
             }
@@ -836,7 +807,7 @@ var CanvasGraphics = (function canvasGraphics() {
       }
 
       if (textSelection)
-        this.pushTextDivs(text);
+        this.textLayer.appendText(text, font.loadedName, fontSize);
     },
     nextLineShowText: function canvasGraphicsNextLineShowText(text) {
       this.nextLine();
@@ -878,8 +849,8 @@ var CanvasGraphics = (function canvasGraphics() {
     },
     setStrokeColor: function canvasGraphicsSetStrokeColor(/*...*/) {
       var cs = this.current.strokeColorSpace;
-      var color = cs.getRgb(arguments);
-      var color = Util.makeCssRgb.apply(null, cs.getRgb(arguments));
+      var rgbColor = cs.getRgb(arguments);
+      var color = Util.makeCssRgb(rgbColor[0], rgbColor[1], rgbColor[2]);
       this.ctx.strokeStyle = color;
       this.current.strokeColor = color;
     },
@@ -901,7 +872,7 @@ var CanvasGraphics = (function canvasGraphics() {
       } else if (IR[0] == 'RadialAxial' || IR[0] == 'Dummy') {
         var pattern = Pattern.shadingFromIR(this.ctx, IR);
       } else {
-        throw 'Unkown IR type';
+        error('Unkown IR type ' + IR[0]);
       }
       return pattern;
     },
@@ -916,7 +887,8 @@ var CanvasGraphics = (function canvasGraphics() {
     },
     setFillColor: function canvasGraphicsSetFillColor(/*...*/) {
       var cs = this.current.fillColorSpace;
-      var color = Util.makeCssRgb.apply(null, cs.getRgb(arguments));
+      var rgbColor = cs.getRgb(arguments);
+      var color = Util.makeCssRgb(rgbColor[0], rgbColor[1], rgbColor[2]);
       this.ctx.fillStyle = color;
       this.current.fillColor = color;
     },
@@ -991,9 +963,9 @@ var CanvasGraphics = (function canvasGraphics() {
         var height = canvas.height;
 
         var bl = Util.applyTransform([0, 0], inv);
-        var br = Util.applyTransform([0, width], inv);
-        var ul = Util.applyTransform([height, 0], inv);
-        var ur = Util.applyTransform([height, width], inv);
+        var br = Util.applyTransform([0, height], inv);
+        var ul = Util.applyTransform([width, 0], inv);
+        var ur = Util.applyTransform([width, height], inv);
 
         var x0 = Math.min(bl[0], br[0], ul[0], ur[0]);
         var y0 = Math.min(bl[1], br[1], ul[1], ur[1]);
@@ -1043,8 +1015,8 @@ var CanvasGraphics = (function canvasGraphics() {
     },
 
     paintJpegXObject: function canvasGraphicsPaintJpegXObject(objId, w, h) {
-      var image = this.objs.get(objId);
-      if (!image) {
+      var domImage = this.objs.get(objId);
+      if (!domImage) {
         error('Dependent image isn\'t ready yet');
       }
 
@@ -1054,7 +1026,6 @@ var CanvasGraphics = (function canvasGraphics() {
       // scale the image to the unit square
       ctx.scale(1 / w, -1 / h);
 
-      var domImage = image.getImage();
       ctx.drawImage(domImage, 0, 0, domImage.width, domImage.height,
                     0, -h, w, h);
 
@@ -1110,7 +1081,11 @@ var CanvasGraphics = (function canvasGraphics() {
       this.restore();
     },
 
-    paintImageXObject: function canvasGraphicsPaintImageXObject(imgData) {
+    paintImageXObject: function canvasGraphicsPaintImageXObject(objId) {
+      var imgData = this.objs.get(objId);
+      if (!imgData)
+        error('Dependent image isn\'t ready yet');
+
       this.save();
       var ctx = this.ctx;
       var w = imgData.width;
@@ -1120,24 +1095,14 @@ var CanvasGraphics = (function canvasGraphics() {
 
       var tmpCanvas = new this.ScratchCanvas(w, h);
       var tmpCtx = tmpCanvas.getContext('2d');
-      var tmpImgData;
+      this.putBinaryImageData(tmpCtx, imgData, w, h);
 
-      // Some browsers can set an UInt8Array directly as imageData, some
-      // can't. As long as we don't have proper feature detection, just
-      // copy over each pixel and set the imageData that way.
-      tmpImgData = tmpCtx.getImageData(0, 0, w, h);
-
-      // Copy over the imageData.
-      var tmpImgDataPixels = tmpImgData.data;
-      var len = tmpImgDataPixels.length;
-
-      while (len--) {
-        tmpImgDataPixels[len] = imgData.data[len];
-      }
-
-      tmpCtx.putImageData(tmpImgData, 0, 0);
       ctx.drawImage(tmpCanvas, 0, -h);
       this.restore();
+    },
+
+    putBinaryImageData: function canvasPutBinaryImageData() {
+      //
     },
 
     // Marked content
@@ -1194,9 +1159,48 @@ var CanvasGraphics = (function canvasGraphics() {
     },
     restoreFillRule: function canvasGraphicsRestoreFillRule(rule) {
       this.ctx.mozFillRule = rule;
+    },
+    getSinglePixelWidth: function getSinglePixelWidth(scale) {
+      var inverse = this.ctx.mozCurrentTransformInverse;
+      return Math.abs(inverse[0] + inverse[2]);
     }
   };
 
-  return constructor;
+  return CanvasGraphics;
 })();
 
+if (!isWorker) {
+  // Feature detection if the browser can use an Uint8Array directly as imgData.
+  var canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  var ctx = canvas.getContext('2d');
+
+  try {
+    ctx.putImageData({
+      width: 1,
+      height: 1,
+      data: new Uint8Array(4)
+    }, 0, 0);
+
+    CanvasGraphics.prototype.putBinaryImageData =
+      function CanvasGraphicsPutBinaryImageDataNative(ctx, imgData) {
+        ctx.putImageData(imgData, 0, 0);
+      };
+  } catch (e) {
+    CanvasGraphics.prototype.putBinaryImageData =
+      function CanvasGraphicsPutBinaryImageDataShim(ctx, imgData, w, h) {
+        var tmpImgData = ctx.getImageData(0, 0, w, h);
+
+        // Copy over the imageData pixel by pixel.
+        var tmpImgDataPixels = tmpImgData.data;
+        var len = tmpImgDataPixels.length;
+
+        while (len--) {
+          tmpImgDataPixels[len] = imgData.data[len];
+        }
+
+        ctx.putImageData(tmpImgData, 0, 0);
+      };
+  }
+}

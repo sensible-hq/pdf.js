@@ -3,13 +3,13 @@
 
 'use strict';
 
-var ColorSpace = (function colorSpaceColorSpace() {
+var ColorSpace = (function ColorSpaceClosure() {
   // Constructor should define this.numComps, this.defaultColor, this.name
-  function constructor() {
+  function ColorSpace() {
     error('should not call ColorSpace constructor');
   }
 
-  constructor.prototype = {
+  ColorSpace.prototype = {
     // Input: array of size numComps representing color component values
     // Output: array of rgb values, each value ranging from [0.1]
     getRgb: function colorSpaceGetRgb(color) {
@@ -22,15 +22,15 @@ var ColorSpace = (function colorSpaceColorSpace() {
     }
   };
 
-  constructor.parse = function colorSpaceParse(cs, xref, res) {
-    var IR = constructor.parseToIR(cs, xref, res);
+  ColorSpace.parse = function colorSpaceParse(cs, xref, res) {
+    var IR = ColorSpace.parseToIR(cs, xref, res);
     if (IR instanceof AlternateCS)
       return IR;
 
-    return constructor.fromIR(IR);
+    return ColorSpace.fromIR(IR);
   };
 
-  constructor.fromIR = function colorSpaceFromIR(IR) {
+  ColorSpace.fromIR = function colorSpaceFromIR(IR) {
     var name = isArray(IR) ? IR[0] : IR;
 
     switch (name) {
@@ -63,7 +63,7 @@ var ColorSpace = (function colorSpaceColorSpace() {
     return null;
   };
 
-  constructor.parseToIR = function colorSpaceParseToIR(cs, xref, res) {
+  ColorSpace.parseToIR = function colorSpaceParseToIR(cs, xref, res) {
     if (isName(cs)) {
       var colorSpaces = xref.fetchIfRef(res.get('ColorSpace'));
       if (isDict(colorSpaces)) {
@@ -154,8 +154,31 @@ var ColorSpace = (function colorSpaceColorSpace() {
     }
     return null;
   };
+  /**
+   * Checks if a decode map matches the default decode map for a color space.
+   * This handles the general decode maps where there are two values per
+   * component. e.g. [0, 1, 0, 1, 0, 1] for a RGB color.
+   * This does not handle Lab, Indexed, or Pattern decode maps since they are
+   * slightly different.
+   * @param {Array} decode Decode map (usually from an image).
+   * @param {Number} n Number of components the color space has.
+   */
+  ColorSpace.isDefaultDecode = function colorSpaceIsDefaultDecode(decode, n) {
+    if (!decode)
+      return true;
 
-  return constructor;
+    if (n * 2 !== decode.length) {
+      warning('The decode map is not the correct length');
+      return true;
+    }
+    for (var i = 0, ii = decode.length; i < ii; i += 2) {
+      if (decode[i] != 0 || decode[i + 1] != 1)
+        return false;
+    }
+    return true;
+  };
+
+  return ColorSpace;
 })();
 
 /**
@@ -164,8 +187,8 @@ var ColorSpace = (function colorSpaceColorSpace() {
  * Both color spaces use a tinting function to convert colors to a base color
  * space.
  */
-var AlternateCS = (function alternateCS() {
-  function constructor(numComps, base, tintFn) {
+var AlternateCS = (function AlternateCSClosure() {
+  function AlternateCS(numComps, base, tintFn) {
     this.name = 'Alternate';
     this.numComps = numComps;
     this.defaultColor = [];
@@ -175,7 +198,7 @@ var AlternateCS = (function alternateCS() {
     this.tintFn = tintFn;
   }
 
-  constructor.prototype = {
+  AlternateCS.prototype = {
     getRgb: function altcs_getRgb(color) {
       var tinted = this.tintFn(color);
       return this.base.getRgb(tinted);
@@ -200,24 +223,27 @@ var AlternateCS = (function alternateCS() {
           baseBuf[pos++] = 255 * tinted[j];
       }
       return base.getRgbBuffer(baseBuf, 8);
+    },
+    isDefaultDecode: function altcs_isDefaultDecode(decodeMap) {
+      return ColorSpace.isDefaultDecode(decodeMap, this.numComps);
     }
   };
 
-  return constructor;
+  return AlternateCS;
 })();
 
-var PatternCS = (function patternCS() {
-  function constructor(baseCS) {
+var PatternCS = (function PatternCSClosure() {
+  function PatternCS(baseCS) {
     this.name = 'Pattern';
     this.base = baseCS;
   }
-  constructor.prototype = {};
+  PatternCS.prototype = {};
 
-  return constructor;
+  return PatternCS;
 })();
 
-var IndexedCS = (function indexedCS() {
-  function constructor(base, highVal, lookup) {
+var IndexedCS = (function IndexedCSClosure() {
+  function IndexedCS(base, highVal, lookup) {
     this.name = 'Indexed';
     this.numComps = 1;
     this.defaultColor = [0];
@@ -240,7 +266,7 @@ var IndexedCS = (function indexedCS() {
     this.lookup = lookupArray;
   }
 
-  constructor.prototype = {
+  IndexedCS.prototype = {
     getRgb: function indexcs_getRgb(color) {
       var numComps = this.base.numComps;
       var start = color[0] * numComps;
@@ -267,19 +293,23 @@ var IndexedCS = (function indexedCS() {
       }
 
       return base.getRgbBuffer(baseBuf, 8);
+    },
+    isDefaultDecode: function indexcs_isDefaultDecode(decodeMap) {
+      // indexed color maps shouldn't be changed
+      return true;
     }
   };
-  return constructor;
+  return IndexedCS;
 })();
 
-var DeviceGrayCS = (function deviceGrayCS() {
-  function constructor() {
+var DeviceGrayCS = (function DeviceGrayCSClosure() {
+  function DeviceGrayCS() {
     this.name = 'DeviceGray';
     this.numComps = 1;
     this.defaultColor = [0];
   }
 
-  constructor.prototype = {
+  DeviceGrayCS.prototype = {
     getRgb: function graycs_getRgb(color) {
       var c = color[0];
       return [c, c, c];
@@ -295,18 +325,21 @@ var DeviceGrayCS = (function deviceGrayCS() {
         rgbBuf[j++] = c;
       }
       return rgbBuf;
+    },
+    isDefaultDecode: function graycs_isDefaultDecode(decodeMap) {
+      return ColorSpace.isDefaultDecode(decodeMap, this.numComps);
     }
   };
-  return constructor;
+  return DeviceGrayCS;
 })();
 
-var DeviceRgbCS = (function deviceRgbCS() {
-  function constructor() {
+var DeviceRgbCS = (function DeviceRgbCSClosure() {
+  function DeviceRgbCS() {
     this.name = 'DeviceRGB';
     this.numComps = 3;
     this.defaultColor = [0, 0, 0];
   }
-  constructor.prototype = {
+  DeviceRgbCS.prototype = {
     getRgb: function rgbcs_getRgb(color) {
       return color;
     },
@@ -319,69 +352,33 @@ var DeviceRgbCS = (function deviceRgbCS() {
       for (i = 0; i < length; ++i)
         rgbBuf[i] = (scale * input[i]) | 0;
       return rgbBuf;
+    },
+    isDefaultDecode: function rgbcs_isDefaultDecode(decodeMap) {
+      return ColorSpace.isDefaultDecode(decodeMap, this.numComps);
     }
   };
-  return constructor;
+  return DeviceRgbCS;
 })();
 
-var DeviceCmykCS = (function deviceCmykCS() {
-  function constructor() {
+var DeviceCmykCS = (function DeviceCmykCSClosure() {
+  function DeviceCmykCS() {
     this.name = 'DeviceCMYK';
     this.numComps = 4;
     this.defaultColor = [0, 0, 0, 1];
   }
-  constructor.prototype = {
+  DeviceCmykCS.prototype = {
     getRgb: function cmykcs_getRgb(color) {
       var c = color[0], m = color[1], y = color[2], k = color[3];
-      var c1 = 1 - c, m1 = 1 - m, y1 = 1 - y, k1 = 1 - k;
 
-      var x, r, g, b;
-      // this is a matrix multiplication, unrolled for performance
-      // code is taken from the poppler implementation
-      x = c1 * m1 * y1 * k1; // 0 0 0 0
-      r = g = b = x;
-      x = c1 * m1 * y1 * k;  // 0 0 0 1
-      r += 0.1373 * x;
-      g += 0.1216 * x;
-      b += 0.1255 * x;
-      x = c1 * m1 * y * k1;  // 0 0 1 0
-      r += x;
-      g += 0.9490 * x;
-      x = c1 * m1 * y * k;   // 0 0 1 1
-      r += 0.1098 * x;
-      g += 0.1020 * x;
-      x = c1 * m * y1 * k1;  // 0 1 0 0
-      r += 0.9255 * x;
-      b += 0.5490 * x;
-      x = c1 * m * y1 * k;   // 0 1 0 1
-      r += 0.1412 * x;
-      x = c1 * m * y * k1;   // 0 1 1 0
-      r += 0.9294 * x;
-      g += 0.1098 * x;
-      b += 0.1412 * x;
-      x = c1 * m * y * k;    // 0 1 1 1
-      r += 0.1333 * x;
-      x = c * m1 * y1 * k1;  // 1 0 0 0
-      g += 0.6784 * x;
-      b += 0.9373 * x;
-      x = c * m1 * y1 * k;   // 1 0 0 1
-      g += 0.0588 * x;
-      b += 0.1412 * x;
-      x = c * m1 * y * k1;   // 1 0 1 0
-      g += 0.6510 * x;
-      b += 0.3137 * x;
-      x = c * m1 * y * k;    // 1 0 1 1
-      g += 0.0745 * x;
-      x = c * m * y1 * k1;   // 1 1 0 0
-      r += 0.1804 * x;
-      g += 0.1922 * x;
-      b += 0.5725 * x;
-      x = c * m * y1 * k;    // 1 1 0 1
-      b += 0.0078 * x;
-      x = c * m * y * k1;    // 1 1 1 0
-      r += 0.2118 * x;
-      g += 0.2119 * x;
-      b += 0.2235 * x;
+      // CMYK -> CMY: http://www.easyrgb.com/index.php?X=MATH&H=14#text14
+      c = (c * (1 - k) + k);
+      m = (m * (1 - k) + k);
+      y = (y * (1 - k) + k);
+
+      // CMY -> RGB: http://www.easyrgb.com/index.php?X=MATH&H=12#text12
+      var r = (1 - c);
+      var g = (1 - m);
+      var b = (1 - y);
 
       return [r, g, b];
     },
@@ -403,9 +400,12 @@ var DeviceCmykCS = (function deviceCmykCS() {
       }
 
       return rgbBuf;
+    },
+    isDefaultDecode: function cmykcs_isDefaultDecode(decodeMap) {
+      return ColorSpace.isDefaultDecode(decodeMap, this.numComps);
     }
   };
 
-  return constructor;
+  return DeviceCmykCS;
 })();
 
