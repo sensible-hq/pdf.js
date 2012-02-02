@@ -19,10 +19,11 @@ PdfDebugger.prototype = {
       var checked = '';
       if (this.breakPoints.indexOf(i) != -1)
         checked = ' checked';
+      var args = IRQueue.argsArray[i] ? IRQueue.argsArray[i] : [];
       content += '<td><input type="checkbox" class="points" id="idxC' + i + '"' + checked + '/></td>' +
         '<td>' + i + '</td>' +
         '<td>' + IRQueue.fnArray[i] + ' </td>' +
-        '<td>' + IRQueue.argsArray[i].join(', ') + '</td>' +
+        '<td>' + args.join(', ') + '</td>' +
       '</tr>';
     }
     content += '</table>';
@@ -59,21 +60,24 @@ PdfDebugger.prototype = {
   },
   breakIt: function(idx, gfx, callback) {
     var self = this;
+    var dom = self.popup.document;
     self.currentIdx = idx;
-    self.popup.onkeydown = function(e) {
-      self.popup.onkeydown = function() { };
+    var listener = function(e) {
       gfx.onBreakPoint = false;
       switch (e.keyCode) {
         case 83: // step
+          dom.removeEventListener('keydown', listener, false);
           callback(self.currentIdx + 1);
           break;
         case 67: // continue
+          dom.removeEventListener('keydown', listener, false);
           var breakPoint = self.getNextBreakPoint();
           callback(breakPoint);
           self.goTo(breakPoint);
           break;
       }
     }
+    dom.addEventListener('keydown', listener, false);
     self.goTo(idx);
   },
   goTo: function(idx) {
