@@ -824,7 +824,7 @@ var PageView = function pageView(container, content, id, pageWidth, pageHeight,
 
     var canvas = document.createElement('canvas');
     canvas.id = 'page' + this.id;
-    canvas.mozOpaque = true;
+    //canvas.mozOpaque = true;
     div.appendChild(canvas);
     this.canvas = canvas;
 
@@ -851,8 +851,10 @@ var PageView = function pageView(container, content, id, pageWidth, pageHeight,
 
     var self = this;
     stats.begin = Date.now();
+    console.time('drawing');
     this.content.startRendering(ctx, function pageViewDrawCallback(error) {
       div.removeChild(self.loadingIconDiv);
+      console.timeEnd('drawing');
 
       if (error)
         PDFView.error('An error occurred while rendering the page.', error);

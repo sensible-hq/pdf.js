@@ -404,6 +404,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                     case 'FL':
                     case 'CA':
                     case 'ca':
+                    case 'BM':
                       gsStateObj.push([key, value]);
                       break;
                     case 'Font':
@@ -425,7 +426,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                     case 'HT':
                     case 'SM':
                     case 'SA':
-                    case 'BM':
                     case 'SMask':
                     case 'AIS':
                     case 'TK':

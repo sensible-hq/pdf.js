@@ -49,6 +49,7 @@ var CanvasExtraState = (function CanvasExtraStateClosure() {
     this.fillAlpha = 1;
     this.strokeAlpha = 1;
     this.lineWidth = 1;
+    this.blendMode = 'Normal';
 
     this.old = old;
   }
@@ -197,6 +198,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     this.ScratchCanvas = ScratchCanvas;
     this.objs = objs;
     this.textLayer = textLayer;
+    this.postProcessing = false;
     if (canvasCtx) {
       addContextCurrentTransform(canvasCtx);
     }
@@ -305,6 +307,14 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
         // If the entire IRQueue was executed, stop as were done.
         if (i == argsArrayLen) {
+
+          if (this.saved) {
+            var ctx = this.ctx;
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.putImageData(this.saved, 0, 0);
+            ctx.restore();
+          }
           return i;
         }
 
@@ -391,6 +401,9 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
           case 'ca':
             this.current.fillAlpha = state[1];
             this.ctx.globalAlpha = state[1];
+            break;
+          case 'BM':
+            this.setBlendMode(value.name);
             break;
         }
       }
@@ -736,7 +749,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
       if (textSelection)
         this.textLayer.appendText(text, font.loadedName, fontSize);
-
+      this.postProcess();
       return text;
     },
     showSpacedText: function canvasGraphicsShowSpacedText(arr) {
@@ -1093,6 +1106,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
       ctx.drawImage(tmpCanvas, 0, -h);
       this.restore();
+      this.postProcess();
     },
 
     putBinaryImageData: function canvasPutBinaryImageData() {
@@ -1157,11 +1171,265 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     getSinglePixelWidth: function getSinglePixelWidth(scale) {
       var inverse = this.ctx.mozCurrentTransformInverse;
       return Math.abs(inverse[0] + inverse[2]);
+    },
+    snap: function canvasGraphicsSnap() {
+      var ctx = this.ctx;
+      var canvas = ctx.canvas;
+      var width = canvas.width;
+      var height = canvas.height;
+      // TODO think if these dimension are affected by transforms
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      var snap = ctx.getImageData(0, 0, width, height);
+      ctx.restore();
+      return snap;
+    },
+    clear: function canvasGraphicsClear() {
+      // Clear the canvas.
+      var ctx = this.ctx;
+      var canvas = ctx.canvas;
+      var width = canvas.width;
+      var height = canvas.height;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.restore();
+    },
+    setBlendMode:  function canvasGraphicsSetBlendMode(value) {
+      // TODO this could be done better
+      this.current.blendMode = value;
+      if (this.saved) {
+        var ctx = this.ctx;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.putImageData(this.saved, 0, 0);
+        ctx.restore();
+        this.saved = null;
+      }
+      if (value === 'Normal') {
+        this.postProcessing = false;
+      } else {
+        this.postProcessing = true;
+        // Take a snapshot of the current canvas and save it.
+        this.saved = this.snap();
+        this.clear();
+      }
+    },
+    postProcess: function canvasGraphicsPostProcess() {
+      if (!this.postProcessing)
+        return;
+      // Blend the current canvas with the saved canvas image.
+      var backdropImage = this.saved;
+      var backdrop = backdropImage.data;
+      var sourceImage = this.snap();
+      var source = sourceImage.data;
+
+      var blendMode = this.current.blendMode;
+      var blend;
+      if (blendMode in Blend.modes) {
+        blend = Blend.modes[blendMode];
+      } else {
+        blendMode = 'Saturation';
+        blend = Blend.modes[blendMode];
+      }
+      var length = backdrop.length;
+      var result = this.ctx.createImageData(1, 4).data;
+      var separable = Blend.isSeparable(blendMode);
+      for (var i = 0; i < length; i += 4) {
+        var sourceAlpha = source[i + 3];
+        if (sourceAlpha === 0)
+          continue;
+
+        if (separable) {
+          backdrop[i] = blend(backdrop[i], source[i]);
+          backdrop[i + 1] = blend(backdrop[i + 1], source[i + 1]);
+          backdrop[i + 2] = blend(backdrop[i + 2], source[i + 2]);
+        } else {
+          blend(i, backdrop, source, result);
+          backdrop[i] = result[0];
+          backdrop[i + 1] = result[1];
+          backdrop[i + 2] = result[2];
+        }
+
+        // alpha compositing
+        /*pixels1[i] =     r * alpha + oR * alpha1;
+        pixels1[i + 1] = g * alpha + oG * alpha1;
+        pixels1[i + 2] = b * alpha + oB * alpha1;*/
+            /*rb = backdrop[i];
+        rs = source[i];
+
+        gb = backdrop[i];
+        gs = source[i];
+
+        bb = backdrop[i];
+        bs = source[i];
+
+        blend(rb, gb, bb, rs, gs, bs, i, source)*/
+      }
+      this.saved = backdropImage;
+      this.clear();
     }
   };
 
   return CanvasGraphics;
 })();
+
+var Blend = (function BlendClosure() {
+  // The following are helper functions from the PDF spec 11.3.5 Blend Mode.
+  function clipColor(offset, c) {
+    var red = offset, gre = offset + 1, blu = offset + 2;
+    var l = lum(offset, c);
+    var n = Math.min(c[red], c[gre], c[blu]);
+    var x = Math.max(c[red], c[gre], c[blu]);
+    if (n < 0) {
+      c[red] = l + (((c[red] - l) * l) / (l - n));
+      c[gre] = l + (((c[gre] - l) * l) / (l - n));
+      c[blu] = l + (((c[blu] - l) * l) / (l - n));
+    }
+    if (x > 255) {
+      c[red] = l + (((c[red] - l) * (255 - l)) / (x - l));
+      c[gre] = l + (((c[gre] - l) * (255 - l)) / (x - l));
+      c[blu] = l + (((c[blu] - l) * (255 - l)) / (x - l));
+    }
+  }
+  function lum(offset, c) {
+    var red = offset, gre = offset + 1, blu = offset + 2;
+    return .3 * c[red] + .59 * c[blu] + .11 * c[gre];
+  }
+  function setLum(offset, c, l, r) {
+    var red = offset, gre = offset + 1, blu = offset + 2;
+    var d = l - lum(offset, c);
+    r[0] = c[red] + d;
+    r[1] = c[gre] + d;
+    r[2] = c[blu] + d;
+    clipColor(offset, r);
+  }
+  function sat(offset, c) {
+    var red = offset, gre = offset + 1, blu = offset + 2;
+    return Math.max(c[red], c[gre], c[blu]) - Math.min(c[red], c[gre], c[blu]);
+  }
+  function setSat(offset, cc, s, r) {
+    var min, mid, max;
+    var a = cc[offset];
+    var b = cc[offset + 1];
+    var c = cc[offset + 2];
+    if (a < b) {
+      if (b < c) {
+        min = 0;
+        mid = 1
+        max = 2;
+      } else if (a < c) {
+        min = 0;
+        mid = 2;
+        max = 1;
+      } else {
+        min = 2;
+        mid = 0;
+        max = 1;
+      }
+    } else {
+      if (a < c) {
+        min = 1;
+        mid = 0;
+        max = 2;
+      } else if (b < c) {
+        min = 1;
+        mid = 2;
+        max = 0;
+      } else {
+        min = 2;
+        mid = 1;
+        max = 0;
+      }
+    }
+    var cmin = cc[offset + min];
+    var cmid = cc[offset + mid];
+    var cmax = cc[offset + max];
+
+    if (cmax > cmin) {
+      r[mid] = (((cmid - cmin) * s) / (cmax - cmin));
+      r[max] = s;
+    } else {
+      r[mid] = r[max] = 0;
+    }
+    r[min] = 0;
+  }
+  var modes = {
+    Multiply: function multiply(b, s) {
+      return (b * s) / 255;
+    },
+    Screen: function screen(b, s) {
+      return 255 - (((255 - b) * (255 - s)) >> 8);
+    },
+    Overlay: function overlay(b, s) {
+      // same as hardlight just reversed.
+      return b < 128
+        ? (2 * s * b / 255)
+        : (255 - 2 * (255 - s) * (255 - b) / 255);
+    },
+    Darken: function darken(b, s) {
+      return (s > b) ? b : s;
+    },
+    Lighten: function lighten(b, s) {
+      return (s < b) ? b : s;
+    },
+    ColorDodge: function colorDodge(b, s) {
+      return s == 255
+        ? s : Math.min(255, ((b << 8 ) / (255 - s)));
+    },
+    ColorBurn: function colorBurn(b, s) {
+      return s == 0
+        ? s : Math.max(0, (255 - ((255 - b) << 8 ) / s));
+    },
+    HardLight: function hardLight(b, s) {
+      return s < 128
+        ? (2 * b * s / 255)
+        : (255 - 2 * (255 - b) * (255 - s) / 255);
+    },
+    SoftLight: function softLight(b, s) {
+      return b < 128
+        ? (2 * ((s >> 1) + 64)) * (b / 255)
+        : 255 - (2 * (255 - (( s >> 1) + 64)) * (255 - b) / 255);
+    },
+    Difference: function difference(b, s) {
+      return Math.abs(b - s);
+    },
+    Exclusion: function exclusion(b, s) {
+      return b + s - 2 * b * s / 255;
+    },
+    // The non seperable blending modes:
+    // b = backdrop, s = source, r = result
+    Hue: function hue(offset, b, s, r) {
+      setSat(offset, s, sat(offset, b), r);
+      setLum(0, r, lum(offset, b), r);
+    },
+    Saturation: function saturation(offset, b, s, r) {
+      setSat(offset, b, sat(offset, s), r);
+      setLum(0, r, lum(offset, b), r);
+    },
+    Color: function color(offset, b, s, r) {
+      setLum(offset, s, lum(offset, b), r);
+    },
+    Luminosity: function luminosity(offset, b, s, r) {
+      setLum(offset, b, lum(offset, s), r);
+    }
+  };
+  return {
+    modes: modes,
+    isSeparable: function blendIsSeparable(mode) {
+      switch (mode) {
+        case 'Hue':
+        case 'Saturation':
+        case 'Color':
+        case 'Luminosity':
+          return false;
+        default:
+          return true;
+      }
+    }
+  };
+})();
+
 
 if (!isWorker) {
   // Feature detection if the browser can use an Uint8Array directly as imgData.
