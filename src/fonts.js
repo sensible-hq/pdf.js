@@ -573,7 +573,8 @@ var FontLoader = {
       src += '  window.onload = function fontLoaderOnload() {\n';
       src += '    parent.postMessage(JSON.stringify(fontNames), "*");\n';
       src += '  }';
-      src += '</script></head><body>';
+      // Hack so the end script tag isn't counted if this is inline JS.
+      src += '</scr' + 'ipt></head><body>';
       for (var i = 0, ii = names.length; i < ii; ++i) {
         src += '<p style="font-family:\'' + names[i] + '\'">Hi</p>';
       }
@@ -2619,7 +2620,13 @@ var Type1Parser = function type1Parser() {
     while (str[index++] != ']')
       count++;
 
-    var array = str.substr(start, count).split(' ');
+    str = str.substr(start, count);
+
+    str = str.trim();
+    // Remove adjacent spaces
+    str = str.replace(/\s+/g, ' ');
+
+    var array = str.split(' ');
     for (var i = 0, ii = array.length; i < ii; i++)
       array[i] = parseFloat(array[i] || 0);
     return array;
@@ -3620,7 +3627,7 @@ var Type2CFF = (function Type2CFFClosure() {
             dict['cidOperatorPresent'] = true;
             break;
           default:
-            TODO('interpret top dict key');
+            TODO('interpret top dict key: ' + key);
         }
       }
       return dict;
