@@ -475,11 +475,13 @@ var PDFView = {
     this.pagesRefMap = pagesRefMap;
     this.destinations = pdf.catalog.destinations;
 
+    var outlineSwitchButton = document.getElementById('outlineSwitch');
     if (pdf.catalog.documentOutline) {
       this.outline = new DocumentOutlineView(pdf.catalog.documentOutline);
-      var outlineSwitchButton = document.getElementById('outlineSwitch');
-      outlineSwitchButton.removeAttribute('disabled');
+      outlineSwitchButton.removeAttribute('hidden');
       this.switchSidebarView('outline');
+    } else {
+      outlineSwitchButton.setAttribute('hidden', true);
     }
 
     // Reset the current scale, as otherwise the page's scale might not get
