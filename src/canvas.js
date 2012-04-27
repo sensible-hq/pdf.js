@@ -280,7 +280,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         fnName = fnArray[i];
 
         if (fnName !== 'dependency') {
-          this[fnName].apply(this, argsArray[i]);
+            this[fnName].apply(this, argsArray[i]);
         } else {
           var deps = argsArray[i];
           for (var n = 0, nn = deps.length; n < nn; n++) {
@@ -289,6 +289,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
             // If the promise isn't resolved yet, add the continueCallback
             // to the promise and bail out.
             if (!objs.isResolved(depObjId)) {
+              debugger;
               objs.get(depObjId, continueCallback);
               return i;
             }
@@ -305,10 +306,11 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         // If the execution took longer then a certain amount of time, shedule
         // to continue exeution after a short delay.
         // However, this is only possible if a 'continueCallback' is passed in.
-        if (continueCallback && slowCommands[fnName] && Date.now() > endTime) {
+        /*if (continueCallback && slowCommands[fnName] && Date.now() > endTime) {
+          debugger;
           setTimeout(continueCallback, 0);
           return i;
-        }
+        }*/
 
         // If the operatorList isn't executed completely yet OR the execution
         // time was short enough, do another execution round.
@@ -539,11 +541,14 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.current.leading = -leading;
     },
     setFont: function CanvasGraphics_setFont(fontRefName, size) {
+      this.ctx.dependsOn(fontRefName);
       var fontObj = this.objs.get(fontRefName);
       var current = this.current;
 
-      if (!fontObj)
+      if (!fontObj) {
+        debugger;
         error('Can\'t find font for ' + fontRefName);
+      }
 
       // Slice-clone matrix so we can manipulate it without affecting original
       if (fontObj.fontMatrix)
@@ -1055,11 +1060,11 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     },
 
     paintJpegXObject: function CanvasGraphics_paintJpegXObject(objId, w, h) {
+/*
       var domImage = this.objs.get(objId);
       if (!domImage) {
         error('Dependent image isn\'t ready yet');
       }
-
       this.save();
 
       var ctx = this.ctx;
@@ -1070,6 +1075,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
                     0, -h, w, h);
 
       this.restore();
+      */
     },
 
     paintImageMaskXObject: function CanvasGraphics_paintImageMaskXObject(
@@ -1122,7 +1128,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     },
 
     paintImageXObject: function CanvasGraphics_paintImageXObject(objId) {
-      var imgData = this.objs.get(objId);
+     /* var imgData = this.objs.get(objId);
       if (!imgData)
         error('Dependent image isn\'t ready yet');
 
@@ -1138,7 +1144,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.putBinaryImageData(tmpCtx, imgData, w, h);
 
       ctx.drawImage(tmpCanvas, 0, -h);
-      this.restore();
+      this.restore();*/
     },
 
     putBinaryImageData: function CanvasGraphics_putBinaryImageData() {

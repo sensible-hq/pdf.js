@@ -25,7 +25,8 @@ var files = [
   'worker.js',
   '../external/jpgjs/jpg.js',
   'jpx.js',
-  'bidi.js'
+  'bidi.js',
+  'proxyctx.js',
 ];
 
 // Load all the files.

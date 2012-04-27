@@ -4,7 +4,7 @@
 'use strict';
 
 var PartialEvaluator = (function PartialEvaluatorClosure() {
-  function PartialEvaluator(xref, handler, uniquePrefix) {
+  function PartialEvaluator(xref, handler, uniquePrefix, depManager) {
     this.state = new EvalState();
     this.stateStack = [];
 
@@ -12,6 +12,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     this.handler = handler;
     this.uniquePrefix = uniquePrefix;
     this.objIdCounter = 0;
+
+    this.depManager = depManager;
   }
 
   var OP_MAP = {
@@ -174,12 +176,39 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                   translated.properties.file.getBytes();
             }
 
-            handler.send('obj', [
+            /*handler.send('obj', [
                 loadedName,
                 'Font',
                 translated.name,
                 translated.file,
                 translated.properties
+            ]);*/
+
+            var name = translated.name;
+            var file = translated.file;
+            var properties = translated.properties;
+
+            if (file) {
+              // Rewrap the ArrayBuffer in a stream.
+              var fontFileDict = new Dict();
+              file = new Stream(file, 0, file.length, fontFileDict);
+            }
+
+            // At this point, only the font object is created but the font is
+            // not yet attached to the DOM. This is done in `FontLoader.bind`.
+            var font = new Font(name, file, properties);
+            self.depsManager[loadedName] = font;
+            var fontPackage = {
+              attached: false,
+              loading: false, /** remove me**/
+              data: font.data,
+              loadedName: font.loadedName,
+              mimetype: font.mimetype
+            };
+            handler.send('obj', [
+                loadedName,
+                'Font',
+                fontPackage
             ]);
           }
         }

@@ -89,6 +89,7 @@ var WorkerMessageHandler = {
       // Create only the model of the PDFDoc, which is enough for
       // processing the content of the pdf.
       pdfModel = new PDFDocument(new Stream(data));
+      pdfModel.depsManager = {};
       var doc = {
         numPages: pdfModel.numPages,
         fingerprint: pdfModel.getFingerprint(),
@@ -133,10 +134,37 @@ var WorkerMessageHandler = {
 
       var dependency = [];
       var operatorList = null;
-      try {
         var page = pdfModel.getPage(pageNum);
         // Pre compile the pdf page and fetch the fonts/images.
-        operatorList = page.getOperatorList(handler, dependency);
+        operatorList = page.getOperatorList(handler, dependency,  pdfModel.depsManager);
+        var ctx = new Proxy2dContext(null, 0);
+        var gfx = new CanvasGraphics(ctx,
+            {
+              isResolved: function(id) { return true },
+              get: function(id, callback) {
+                if (callback)
+                  callback();
+                return pdfModel.depsManager[id];
+              }
+            }, false);
+        //gfx.beginDrawing({"transform":[1.3333333333333333,0,0,-1.3333333333333333,0,266.66666666666663],"offsetX":0,"offsetY":0,"width":266.66666666666663,"height":266.66666666666663,"fontScale":1.3333333333333333} );
+
+        var startIdx = 0;
+        var length = operatorList.fnArray.length;
+        
+        var self = this;
+        function next() {
+          startIdx =
+            gfx.executeOperatorList(operatorList, startIdx, next, null);
+          if (startIdx == length) {
+            gfx.endDrawing();
+            console.log('done rendering');
+          }
+        }
+        next();
+
+      try {
+
       } catch (e) {
         var minimumStackMessage =
             'worker.js: while trying to getPage() and getOperatorList()';
@@ -179,7 +207,7 @@ var WorkerMessageHandler = {
       }
       handler.send('RenderPage', {
         pageIndex: data.pageIndex,
-        operatorList: operatorList,
+        operatorList: ctx.actions,
         depFonts: Object.keys(fonts)
       });
     }, this);

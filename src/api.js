@@ -1,6 +1,9 @@
 /* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 
+var fontPromises = {};
+
+
 /**
  * This is the main entry point for loading a PDF and interacting with it.
  * NOTE: If a URL is used to fetch the PDF data a standard XMLHttpRequest(XHR)
@@ -232,16 +235,20 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
 
       // Once the operatorList and fonts are loaded, do the actual rendering.
       this.displayReadyPromise.then(
-        function pageDisplayReadyPromise() {
+        function pageDisplayReadyPromise(actions) {
           if (self.destroyed) {
             complete();
             return;
           }
 
-          var gfx = new CanvasGraphics(params.canvasContext,
-            this.objs, params.textLayer);
+          /*var gfx = new CanvasGraphics(params.canvasContext,
+            this.objs, params.textLayer);*/
           try {
-            this.display(gfx, params.viewport, complete);
+            //console.log(JSON.stringify(params.viewport));
+            //setTimeout(function() {
+              this.display(params.canvasContext, actions, complete, params.viewport); //, params.viewport, complete);
+              
+            //}.bind(this), 1000);
           } catch (e) {
             complete(e);
           }
@@ -266,15 +273,15 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
         // Always defer call to display() to work around bug in
         // Firefox error reporting from XHR callbacks.
         setTimeout(function pageSetTimeout() {
-          self.displayReadyPromise.resolve();
+          self.displayReadyPromise.resolve(operatorList);
         });
       };
 
-      this.ensureFonts(fonts,
-        function pageStartRenderingFromOperatorListEnsureFonts() {
           displayContinuation();
+      /*this.ensureFonts(fonts,
+        function pageStartRenderingFromOperatorListEnsureFonts() {
         }
-      );
+      );*/
     },
     /**
      * For internal use only.
@@ -299,7 +306,46 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
     /**
      * For internal use only.
      */
-    display: function PDFPageWrapper_display(gfx, viewport, callback) {
+    display: function PDFPageWrapper_display(ctx, actions, callback, viewport) { //gfx, viewport, callback) {
+      var method, args;
+      var actionsLength = actions.length;
+      var stats = this.stats;
+      stats.time('Rendering');
+      
+      var transform = viewport.transform;
+      ctx.save();
+      ctx.transform.apply(ctx, transform);
+console.time('draw');     
+      function next(i) {
+        for(; i < actionsLength; i++) {
+          var action = actions[i];
+          var type = action[0];
+          if(type === 0) {
+            method = action[1];
+            args = action[2];
+            ctx[method].apply(ctx, args);
+          } else if(type === 1) {
+            var key = action[1];
+            var value = action[2];
+            ctx[key] = value;
+          } else if (type === 4) {
+            fontPromises[action[1]].then(function() {
+              debugger;
+              setTimeout(function() { next(i + 1) }, 0);
+            });
+            return;
+          }
+        }
+        console.timeEnd('draw');
+        stats.timeEnd('Rendering');
+        stats.timeEnd('Overall');     
+        if (callback) callback();
+      }
+      next(0);
+      
+
+return;
+/*
       var stats = this.stats;
       stats.time('Rendering');
 
@@ -326,7 +372,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
           if (callback) callback();
         }
       }
-      next();
+      next();*/
     },
     /**
      * Stub for future feature.
@@ -502,20 +548,13 @@ var WorkerTransport = (function WorkerTransportClosure() {
             this.objs.resolve(id, imageData);
             break;
           case 'Font':
-            var name = data[2];
-            var file = data[3];
-            var properties = data[4];
+            var font = data[2];
+            fontPromises[font.loadedName] = new PDFJS.Promise();
+            FontLoader.bind([font], function() {
+              console.log('Loaded font: ' + font.loadedName);
+              fontPromises[font.loadedName].resolve();
+            });
 
-            if (file) {
-              // Rewrap the ArrayBuffer in a stream.
-              var fontFileDict = new Dict();
-              file = new Stream(file, 0, file.length, fontFileDict);
-            }
-
-            // At this point, only the font object is created but the font is
-            // not yet attached to the DOM. This is done in `FontLoader.bind`.
-            var font = new Font(name, file, properties);
-            this.objs.resolve(id, font);
             break;
           default:
             error('Got unkown object type ' + type);

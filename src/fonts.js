@@ -407,6 +407,27 @@ var FontLoader = {
   listeningForFontLoad: false,
 
   bind: function fontLoaderBind(fonts, callback) {
+
+    function bindDOM(loadedName, mimetype, data) {
+      var fontName = loadedName;
+
+      // Add the font-face rule to the document
+      var url = ('url(data:' + mimetype + ';base64,' +
+                 window.btoa(data) + ');');
+      var rule = "@font-face { font-family:'" + fontName + "';src:" + url + '}';
+
+      var styleElement = document.createElement('style');
+      document.documentElement.getElementsByTagName('head')[0].appendChild(
+        styleElement);
+
+      var styleSheet = styleElement.sheet;
+      styleSheet.insertRule(rule, styleSheet.cssRules.length);
+
+      /*if (PDFJS.pdfBug && FontInspector.enabled)
+        FontInspector.fontAdded(this, url);*/
+
+      return rule;  
+    }
     function checkFontsLoaded() {
       for (var i = 0, ii = fonts.length; i < ii; i++) {
         var fontObj = fonts[i];
@@ -430,7 +451,7 @@ var FontLoader = {
 
       // Add the font to the DOM only once or skip if the font
       // is already loaded.
-      if (font.attached || font.loading == false) {
+      if (font.attached) {
         continue;
       }
       font.attached = true;
@@ -443,8 +464,7 @@ var FontLoader = {
         var length = data.length;
         for (var j = 0; j < length; j++)
           str += String.fromCharCode(data[j]);
-
-        var rule = font.bindDOM(str);
+        var rule = bindDOM(font.loadedName, font.mimetype, str);
         if (rule) {
           rules.push(rule);
           names.push(font.loadedName);
@@ -789,6 +809,7 @@ var Font = (function FontClosure() {
     this.widths = properties.widths;
     this.defaultWidth = properties.defaultWidth;
     this.composite = properties.composite;
+    this.wideChars = properties.wideChars;
     this.hasEncoding = properties.hasEncoding;
 
     this.fontMatrix = properties.fontMatrix;
@@ -2366,6 +2387,7 @@ var Font = (function FontClosure() {
     },
 
     bindDOM: function Font_bindDOM(data) {
+        /**** remove me! ****/
       var fontName = this.loadedName;
 
       // Add the font-face rule to the document
@@ -2520,7 +2542,7 @@ var Font = (function FontClosure() {
 
       glyphs = [];
 
-      if (this.composite) {
+      if (this.wideChars) {
         // composite fonts have multi-byte strings convert the string from
         // single-byte to multi-byte
         // XXX assuming CIDFonts are two-byte - later need to extract the

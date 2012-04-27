@@ -131,7 +131,7 @@ var Page = (function PageClosure() {
       return shadow(this, 'rotate', rotate);
     },
 
-    getOperatorList: function Page_getOperatorList(handler, dependency) {
+    getOperatorList: function Page_getOperatorList(handler, dependency, zz) {
       var xref = this.xref;
       var content = this.content;
       var resources = this.resources;
@@ -139,6 +139,7 @@ var Page = (function PageClosure() {
         // fetching items
         var streams = [];
         var i, n = content.length;
+        var streams = [];
         for (i = 0; i < n; ++i)
           streams.push(xref.fetchIfRef(content[i]));
         content = new StreamsSequenceStream(streams);
@@ -151,10 +152,52 @@ var Page = (function PageClosure() {
 
       var pe = this.pe = new PartialEvaluator(
                                 xref, handler, 'p' + this.pageNumber + '_');
+      pe.depsManager = zz;
 
       return pe.getOperatorList(content, resources, dependency);
     },
+    extractTextContent: function Page_extractTextContent() {
+      var handler = {
+        on: function nullHandlerOn() {},
+        send: function nullHandlerSend() {}
+      };
 
+      var xref = this.xref;
+      var content = xref.fetchIfRef(this.content);
+      var resources = xref.fetchIfRef(this.resources);
+      if (isArray(content)) {
+        // fetching items
+        var i, n = content.length;
+        var streams = [];
+        for (i = 0; i < n; ++i)
+          streams.push(xref.fetchIfRef(content[i]));
+        content = new StreamsSequenceStream(streams);
+      } else if (isStream(content)) {
+        content.reset();
+      }
+
+      var pe = new PartialEvaluator(
+                     xref, handler, 'p' + this.pageNumber + '_');
+      return pe.getTextContent(content, resources);
+    },
+
+    ensureFonts: function Page_ensureFonts(fonts, callback) {
+      this.stats.time('Font Loading');
+      // Convert the font names to the corresponding font obj.
+      for (var i = 0, ii = fonts.length; i < ii; i++) {
+        fonts[i] = this.objs.objs[fonts[i]].data;
+      }
+
+      // Load all the fonts
+      FontLoader.bind(
+        fonts,
+        function pageEnsureFontsFontObjs(fontObjs) {
+          this.stats.timeEnd('Font Loading');
+
+          callback.call(this);
+        }.bind(this)
+      );
+    },
     getLinks: function Page_getLinks() {
       var links = [];
       var annotations = pageGetAnnotations();
@@ -466,3 +509,4 @@ var PDFDocument = (function PDFDocumentClosure() {
 
   return PDFDocument;
 })();
+
