@@ -137,6 +137,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
     this.stats.enabled = !!globalScope.PDFJS.enableStats;
     this.objs = transport.objs;
     this.renderInProgress = false;
+    this.actions = null;
   }
   PDFPageProxy.prototype = {
     /**
@@ -202,6 +203,12 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
      * rendering.
      */
     render: function(params) {
+      if (this.actions) {
+        this.display(params.canvasContext, this.actions, complete, params.viewport); //, params.viewport, complete);
+        var p = new PDFJS.Promise();
+        p.resolve();
+        return p;
+      }
       this.renderInProgress = true;
 
       var promise = new Promise();
@@ -308,6 +315,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
      */
     display: function PDFPageWrapper_display(ctx, actions, callback, viewport) { //gfx, viewport, callback) {
       var method, args;
+      this.actions = actions;
       var actionsLength = actions.length;
       var stats = this.stats;
       stats.time('Rendering');
