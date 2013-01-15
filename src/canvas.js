@@ -547,6 +547,20 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
             this.current.fillAlpha = state[1];
             this.ctx.globalAlpha = state[1];
             break;
+          case 'SMask':
+            this.setSoftMask(value);
+            break;
+          case 'BM':
+            if(value && value.name && (value.name != 'Normal')) {
+              this.ctx.globalCompositeOperation = value.name.replace(/([A-Z])/g,
+                function(c) {
+                  return "-" + c.toLowerCase()
+                }
+              ).substring(1);
+            } else {
+              this.ctx.globalCompositeOperation = 'source-over';
+            }
+            break;
         }
       }
     },
@@ -1447,6 +1461,30 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     },
     restoreFillRule: function CanvasGraphics_restoreFillRule(rule) {
       this.ctx.mozFillRule = rule;
+    },
+    setSoftMask: function canvasGraphicsSetSoftMask(softMask) {
+      if (!softMask) {
+        // TODO Clear the soft mask.
+        return;
+      }
+      if (softMask.backdropColor) {
+        warn('TODO: support backdrop color.');
+      }
+      if (softMask.transferFunction) {
+        error('TODO: support transfer function.');
+      }
+      var width = this.ctx.canvas.width, height = this.ctx.canvas.height;
+      var scratchCanvas = createScratchCanvas(width, height);
+      var ctx = scratchCanvas.getContext('2d');
+      var cg = new CanvasGraphics(ctx, this.commonObjs, this.objs);
+      ctx.setTransform.apply(ctx, this.ctx.mozCurrentTransform);
+      var matrix = softMask.matrix, bbox = softMask.bbox;
+      cg.paintFormXObjectBegin(matrix, bbox);
+      cg.executeOperatorList(softMask.operatorList);
+      cg.paintFormXObjectEnd();
+      this.ctx.mask(scratchCanvas, 0, 0, width, height, 0, 0, width, height);
+      // !!!REMOVE ME!!!
+      document.querySelector('#viewerContainer').appendChild(scratchCanvas);
     },
     getSinglePixelWidth: function CanvasGraphics_getSinglePixelWidth(scale) {
       var inverse = this.ctx.mozCurrentTransformInverse;

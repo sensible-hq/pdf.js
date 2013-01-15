@@ -298,6 +298,28 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           }, handler, xref, resources, image, inline);
       }
 
+     function buildSoftMaskImage(mask) {
+        if (isName(mask) && mask.name === 'None') {
+          return null;
+        }
+        var subtype = xref.fetchIfRef(mask.get('S'));
+        assertWellFormed(isName(subtype), 'Invalid softmask subtype.');
+        var xobj = xref.fetchIfRef(mask.get('G'));
+        var operatorList = this.getOperatorList(xobj,
+                                                xobj.dict.get('Resources'),
+                                                dependency,
+                                                []);
+        return {
+          subtype: subtype.name,
+          operatorList: operatorList,
+          backdropColor: mask.get('BC'),
+          transferFunction: mask.get('TR'),
+          matrix: xobj.dict.get('Matrix'),
+          bbox: xobj.dict.get('BBox')
+        };
+      }
+
+
       if (!queue)
         queue = {};
 
@@ -457,6 +479,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                     case 'FL':
                     case 'CA':
                     case 'ca':
+                    case 'BM':
                       gsStateObj.push([key, value]);
                       break;
                     case 'Font':
@@ -466,15 +489,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                         value[1]
                       ]);
                       break;
-                    case 'BM':
-                      // We support the default so don't trigger the TODO.
-                      if (!isName(value) || value.name != 'Normal')
-                        TODO('graphic state operator ' + key);
-                      break;
                     case 'SMask':
-                      // We support the default so don't trigger the TODO.
-                      if (!isName(value) || value.name != 'None')
-                        TODO('graphic state operator ' + key);
+                      value = xref.fetchIfRef(value);
+                      gsStateObj.push([key,
+                                       buildSoftMaskImage.call(self, value)]);
                       break;
                     // Only generate info log messages for the following since
                     // they are unlikey to have a big impact on the rendering.
