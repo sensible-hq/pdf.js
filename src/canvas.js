@@ -225,6 +225,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     this.objs = objs;
     this.textLayer = textLayer;
     this.imageLayer = imageLayer;
+    this.groupStack = [];
     if (canvasCtx) {
       addContextCurrentTransform(canvasCtx);
     }
@@ -355,6 +356,25 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
                                width, height);
 
     return tmpCanvas;
+  }
+
+  function copyCtxState(sourceCtx, destCtx) {
+    var properties = ['strokeStyle', 'fillStyle', 'fillRule', 'globalAlpha',
+                      'lineWidth', 'lineCap', 'lineJoin', 'miterLimit',
+                      'globalCompositeOperation', 'font'];
+    for (var i = 0, ii = properties.length; i < ii; i++) {
+      var property = properties[i];
+      if (property in sourceCtx) {
+        destCtx[property] = sourceCtx[property];
+      }
+    }
+    if ('setLineDash' in sourceCtx) {
+      destCtx.setLineDash(sourceCtx.getLineDash());
+      destCtx.lineDashOffset =  sourceCtx.lineDashOffset;
+    } else if ('mozDash' in sourceCtx) {
+      destCtx.mozDash = sourceCtx.mozDash;
+      destCtx.mozDashOffset = sourceCtx.mozDashOffset;
+    }
   }
 
   var LINE_CAP_STYLES = ['butt', 'round', 'square'];
@@ -1344,6 +1364,45 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         // some pdf don't close all restores inside object
         // closing those for them
       } while (this.current.paintFormXObjectDepth >= depth);
+    },
+
+    beginGroup: function CanvasGraphics_beginGroup(group) {
+      this.save();
+      // TODO We should probably create the the new canvas based on the
+      // size of the transformed bounding box.
+      // TODO Support knockout and isolation. Note: according to one of the
+      // adobe people non-isolated group results aren't usually that different
+      // and they even have tools that ignore this setting. Knockout is
+      // supposedly possible with the use of clever compositing modes.
+      if (group.knockout) {
+        TODO('Support knockout for groups.');
+      }
+      var width = this.ctx.canvas.width, height = this.ctx.canvas.height;
+      var scratchCanvas = createScratchCanvas(width, height);
+      var newCtx = scratchCanvas.getContext('2d');
+      addContextCurrentTransform(newCtx);
+      newCtx.setTransform.apply(newCtx, this.ctx.mozCurrentTransform);
+      copyCtxState(this.ctx, newCtx);
+      this.groupStack.push(this.ctx);
+      this.ctx = newCtx;
+      // A transparency group should reset the blend mode, soft mask, and
+      // alpha constants.
+      // TODO Clear soft mask.
+      this.setGState({
+        'BM': 'Normal',
+        'ca': 1,
+        'CA': 1
+      });
+    },
+
+    endGroup: function CanvasGraphics_endGroup(group) {
+      var groupCtx = this.ctx;
+      this.ctx = this.groupStack.pop();
+      this.ctx.save();
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.ctx.drawImage(groupCtx.canvas, 0, 0);
+      this.ctx.restore();
+      this.restore();
     },
 
     paintJpegXObject: function CanvasGraphics_paintJpegXObject(objId, w, h) {
