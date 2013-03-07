@@ -1370,10 +1370,16 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.save();
       // TODO We should probably create the the new canvas based on the
       // size of the transformed bounding box.
-      // TODO Support knockout and isolation. Note: according to one of the
-      // adobe people non-isolated group results aren't usually that different
-      // and they even have tools that ignore this setting. Knockout is
-      // supposedly possible with the use of clever compositing modes.
+
+      // TODO non-isolated groups - according to one of the adobe people
+      // non-isolated group results aren't usually that different
+      // and they even have tools that ignore this setting. To really implement
+      // this we'd have to support another channel where we'd keep track of the
+      // backdrop for removal.
+      // See http://www.svgopen.org/2005/papers/abstractsvgopen/index.html#S9
+
+      // TODO knockout - supposedly possible with the clever use of compositing
+      // modes.
       if (group.knockout) {
         TODO('Support knockout for groups.');
       }
