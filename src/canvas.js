@@ -583,11 +583,16 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
             break;
           case 'BM':
             if(value && value.name && (value.name != 'Normal')) {
-              this.ctx.globalCompositeOperation = value.name.replace(/([A-Z])/g,
+              var mode = value.name.replace(/([A-Z])/g,
                 function(c) {
                   return '-' + c.toLowerCase();
                 }
               ).substring(1);
+              this.ctx.globalCompositeOperation = mode;
+              if (this.ctx.globalCompositeOperation !== mode) {
+                warn('globalCompositeOperation "' + mode +
+                     '" is not supported');
+              }
             } else {
               this.ctx.globalCompositeOperation = 'source-over';
             }
@@ -1375,6 +1380,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       var width = this.ctx.canvas.width, height = this.ctx.canvas.height;
       var scratchCanvas = createScratchCanvas(width, height);
       var newCtx = scratchCanvas.getContext('2d');
+      addContextCurrentTransform(newCtx);
       newCtx.setTransform.apply(newCtx, this.ctx.mozCurrentTransform);
       copyCtxState(this.ctx, newCtx);
       this.groupStack.push(this.ctx);
