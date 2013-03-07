@@ -1388,11 +1388,11 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       // A transparency group should reset the blend mode, soft mask, and
       // alpha constants.
       // TODO Clear soft mask.
-      this.setGState({
-        'BM': 'Normal',
-        'ca': 1,
-        'CA': 1
-      });
+      this.setGState([
+        ['BM', 'Normal'],
+        ['ca', 1],
+        ['CA', 1]
+      ]);
     },
 
     endGroup: function CanvasGraphics_endGroup(group) {
