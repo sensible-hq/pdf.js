@@ -16,7 +16,7 @@
  */
 /* globals ColorSpace, DeviceCmykCS, DeviceGrayCS, DeviceRgbCS, error,
            FONT_IDENTITY_MATRIX, IDENTITY_MATRIX, ImageData, isArray, isNum,
-           isString, Pattern, TilingPattern, TODO, Util, warn */
+           isString, Pattern, TilingPattern, TODO, Util, warn, assert */
 
 'use strict';
 
@@ -1368,9 +1368,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
     beginGroup: function CanvasGraphics_beginGroup(group) {
       this.save();
-      // TODO We should probably create the the new canvas based on the
-      // size of the transformed bounding box.
-
+      var currentCtx = this.ctx;
       // TODO non-isolated groups - according to one of the adobe people
       // non-isolated group results aren't usually that different
       // and they even have tools that ignore this setting. To really implement
@@ -1383,31 +1381,53 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       if (group.knockout) {
         TODO('Support knockout for groups.');
       }
-      var width = this.ctx.canvas.width, height = this.ctx.canvas.height;
-      var scratchCanvas = createScratchCanvas(width, height);
-      var newCtx = scratchCanvas.getContext('2d');
-      addContextCurrentTransform(newCtx);
-      newCtx.setTransform.apply(newCtx, this.ctx.mozCurrentTransform);
-      copyCtxState(this.ctx, newCtx);
-      this.groupStack.push(this.ctx);
-      this.ctx = newCtx;
-      // A transparency group should reset the blend mode, soft mask, and
-      // alpha constants.
-      // TODO Clear soft mask.
+
+      var currentTransform = currentCtx.mozCurrentTransform;
+      if (group.matrix) {
+        currentCtx.transform.apply(currentCtx, group.matrix);
+      }
+      assert(group.bbox, 'Bounding box is required.');
+
+      // Based on the current transform figure out how big the bounding box
+      // will actually be.
+      var transBbox = Util.normalizeRect(Util.applyTransformRect(group.bbox,
+                                              currentCtx.mozCurrentTransform));
+      // Use ceil so in case we're between sizes we don't create canvas that is
+      // too small.
+      var drawnWidth = Math.ceil(transBbox[2] - transBbox[0]);
+      var drawnHeight = Math.ceil(transBbox[3] - transBbox[1]);
+      var scratchCanvas = createScratchCanvas(drawnWidth, drawnHeight);
+      var groupCtx = scratchCanvas.getContext('2d');
+      addContextCurrentTransform(groupCtx);
+      // Since we created a new canvas that is just the size of the bounding box
+      // we have to translate the group ctx.
+      groupCtx.translate(-transBbox[0], -transBbox[1]);
+      groupCtx.transform.apply(groupCtx, currentTransform);
+
+      // Setup the current ctx so when the group is popped we draw it the right
+      // location.
+      currentCtx.setTransform(1, 0, 0, 1, 0, 0);
+      // Convert to integers so we avoid sub-pixl interplation when we redraw
+      // the group.
+      currentCtx.translate(transBbox[0] | 0, transBbox[1] | 0);
+
+      // The transparency group inherits all off the current graphics state
+      // except the blend mode, soft mask, and alpha constants.
+      copyCtxState(currentCtx, groupCtx);
+      this.ctx = groupCtx;
       this.setGState([
+        ['SMask', 'None'],
         ['BM', 'Normal'],
         ['ca', 1],
         ['CA', 1]
       ]);
+      this.groupStack.push(currentCtx);
     },
 
     endGroup: function CanvasGraphics_endGroup(group) {
       var groupCtx = this.ctx;
       this.ctx = this.groupStack.pop();
-      this.ctx.save();
-      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.drawImage(groupCtx.canvas, 0, 0);
-      this.ctx.restore();
       this.restore();
     },
 

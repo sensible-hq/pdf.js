@@ -237,6 +237,12 @@ var Util = PDFJS.Util = (function UtilClosure() {
     return [xt, yt];
   };
 
+  Util.applyTransformRect = function Util_applyTransform(r, m) {
+    var p1 = Util.applyTransform(r, m);
+    var p2 = Util.applyTransform(r.slice(2), m);
+    return p1.concat(p2);
+  };
+
   Util.inverseTransform = function Util_inverseTransform(m) {
     var d = m[0] * m[3] - m[1] * m[2];
     return [m[3] / d, -m[1] / d, -m[2] / d, m[0] / d,
