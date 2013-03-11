@@ -1392,7 +1392,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       // will actually be.
       var transBbox = Util.normalizeRect(Util.applyTransformRect(group.bbox,
                                               currentCtx.mozCurrentTransform));
-      // Use ceil so in case we're between sizes we don't create canvas that is
+      // Use ceil in case we're between sizes so we don't create canvas that is
       // too small.
       var drawnWidth = Math.ceil(transBbox[2] - transBbox[0]);
       var drawnHeight = Math.ceil(transBbox[3] - transBbox[1]);
@@ -1401,15 +1401,15 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       addContextCurrentTransform(groupCtx);
       // Since we created a new canvas that is just the size of the bounding box
       // we have to translate the group ctx.
-      groupCtx.translate(-transBbox[0], -transBbox[1]);
+      var offsetX = transBbox[0];
+      var offsetY = transBbox[1];
+      groupCtx.translate(-offsetX, -offsetY);
       groupCtx.transform.apply(groupCtx, currentTransform);
 
       // Setup the current ctx so when the group is popped we draw it the right
       // location.
       currentCtx.setTransform(1, 0, 0, 1, 0, 0);
-      // Convert to integers so we avoid sub-pixl interplation when we redraw
-      // the group.
-      currentCtx.translate(transBbox[0] | 0, transBbox[1] | 0);
+      currentCtx.translate(offsetX, offsetY);
 
       // The transparency group inherits all off the current graphics state
       // except the blend mode, soft mask, and alpha constants.
@@ -1427,6 +1427,13 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     endGroup: function CanvasGraphics_endGroup(group) {
       var groupCtx = this.ctx;
       this.ctx = this.groupStack.pop();
+      // Turn off image smoothing to avoid sub pixel interpolation which can
+      // look kind of blurry for some pdfs.
+      if ('imageSmoothingEnabled' in this.ctx) {
+        this.ctx.imageSmoothingEnabled = false
+      } else {
+        this.ctx.mozImageSmoothingEnabled = false;
+      }
       this.ctx.drawImage(groupCtx.canvas, 0, 0);
       this.restore();
     },
