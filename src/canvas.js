@@ -582,7 +582,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
             this.ctx.globalAlpha = state[1];
             break;
           case 'BM':
-            if(value && value.name && (value.name != 'Normal')) {
+            if (value && value.name && (value.name !== 'Normal')) {
               var mode = value.name.replace(/([A-Z])/g,
                 function(c) {
                   return '-' + c.toLowerCase();

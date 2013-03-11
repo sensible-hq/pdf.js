@@ -1608,7 +1608,7 @@ var PDFView = {
 
     for (var i = 1, ii = views.length; i <= ii; ++i) {
       view = views[i - 1];
-      currentHeight = view.el.offsetTop;
+      currentHeight = view.el.offsetTop + view.el.clientTop;
       if (currentHeight + view.el.clientHeight > top)
         break;
       currentHeight += view.el.clientHeight;
@@ -1632,7 +1632,7 @@ var PDFView = {
     for (; i <= ii && currentHeight < bottom; ++i) {
       view = views[i - 1];
       viewHeight = view.el.clientHeight;
-      currentHeight = view.el.offsetTop;
+      currentHeight = view.el.offsetTop + view.el.clientTop;
       nextHeight = currentHeight + viewHeight;
       hidden = Math.max(0, top - currentHeight) +
                Math.max(0, nextHeight - bottom);
@@ -3302,7 +3302,8 @@ window.addEventListener('keydown', function keydown(evt) {
 
   // First, handle the key bindings that are independent whether an input
   // control is selected or not.
-  if (cmd == 1 || cmd == 8) { // either CTRL or META key.
+  if (cmd === 1 || cmd === 8 || cmd === 5 || cmd === 12) {
+    // either CTRL or META key with optional SHIFT.
     switch (evt.keyCode) {
       case 70:
         if (!PDFView.supportsIntegratedFind) {
