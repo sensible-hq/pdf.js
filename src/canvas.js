@@ -1390,19 +1390,20 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
       // Based on the current transform figure out how big the bounding box
       // will actually be.
-      var transBbox = Util.normalizeRect(Util.applyTransformRect(group.bbox,
-                                              currentCtx.mozCurrentTransform));
+      var bounds = Util.getAxialAlignedBoundingBox(
+                    group.bbox,
+                    currentCtx.mozCurrentTransform);
       // Use ceil in case we're between sizes so we don't create canvas that is
       // too small.
-      var drawnWidth = Math.ceil(transBbox[2] - transBbox[0]);
-      var drawnHeight = Math.ceil(transBbox[3] - transBbox[1]);
+      var drawnWidth = Math.ceil(bounds[2] - bounds[0]);
+      var drawnHeight = Math.ceil(bounds[3] - bounds[1]);
       var scratchCanvas = createScratchCanvas(drawnWidth, drawnHeight);
       var groupCtx = scratchCanvas.getContext('2d');
       addContextCurrentTransform(groupCtx);
       // Since we created a new canvas that is just the size of the bounding box
       // we have to translate the group ctx.
-      var offsetX = transBbox[0];
-      var offsetY = transBbox[1];
+      var offsetX = bounds[0];
+      var offsetY = bounds[1];
       groupCtx.translate(-offsetX, -offsetY);
       groupCtx.transform.apply(groupCtx, currentTransform);
 
@@ -1430,7 +1431,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       // Turn off image smoothing to avoid sub pixel interpolation which can
       // look kind of blurry for some pdfs.
       if ('imageSmoothingEnabled' in this.ctx) {
-        this.ctx.imageSmoothingEnabled = false
+        this.ctx.imageSmoothingEnabled = false;
       } else {
         this.ctx.mozImageSmoothingEnabled = false;
       }
