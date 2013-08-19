@@ -4818,23 +4818,34 @@ var Font = (function FontClosure() {
           warn('Unsupported CMap: ' + cidEncoding);
         }
       }
-      if (!converter && this.wideChars) {
+
+      if (!converter && this.cmap) {
+        var i = 0;
+        while (i < chars.length) {
+          var c = this.cmap.readCharCode(chars, i);
+          i += c[1];
+          var glyph = this.charToGlyph(c[0]);
+          // !!!!!!!!!!!!! push space?
+          // placing null after each word break charcode (ASCII SPACE)
+          // if (charcode == 0x20)
+            // glyphs.push(null);
+          glyphs.push(glyph);
+        }
+
+
         // composite fonts have multi-byte strings convert the string from
         // single-byte to multi-byte
         // XXX assuming CIDFonts are two-byte - later need to extract the
         // correct byte encoding according to the PDF spec
-        var length = chars.length - 1; // looping over two bytes at a time so
+        /*var length = chars.length - 1; // looping over two bytes at a time so
                                        // loop should never end on the last byte
         for (var i = 0; i < length; i++) {
           var charcode = int16([chars.charCodeAt(i++), chars.charCodeAt(i)]);
           var glyph = this.charToGlyph(charcode);
           glyphs.push(glyph);
           // placing null after each word break charcode (ASCII SPACE)
-          if (charcode == 0x20)
-            glyphs.push(null);
-        }
-      }
-      else {
+        }*/
+      } else {
         for (var i = 0, ii = chars.length; i < ii; ++i) {
           var charcode = chars.charCodeAt(i);
           var glyph = this.charToGlyph(charcode);

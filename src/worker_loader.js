@@ -44,6 +44,7 @@ var files = [
   'jpx.js',
   'jbig2.js',
   'bidi.js',
+  'cmap.js',
   '../external/jpgjs/jpg.js'
 ];
 

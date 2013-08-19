@@ -926,121 +926,9 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         if (!isIdentityMap)
           error('ToUnicode file cmap translation not implemented');
       } else if (isStream(cmapObj)) {
-        var tokens = [];
-        var token = '';
-        var beginArrayToken = {};
-
-        var cmap = cmapObj.getBytes(cmapObj.length);
-        for (var i = 0, ii = cmap.length; i < ii; i++) {
-          var octet = cmap[i];
-          if (octet == 0x20 || octet == 0x0D || octet == 0x0A ||
-              octet == 0x3C || octet == 0x5B || octet == 0x5D) {
-            switch (token) {
-              case 'usecmap':
-                error('usecmap is not implemented');
-                break;
-
-              case 'beginbfchar':
-              case 'beginbfrange':
-              case 'begincidchar':
-              case 'begincidrange':
-                token = '';
-                tokens = [];
-                break;
-
-              case 'endcidrange':
-              case 'endbfrange':
-                for (var j = 0, jj = tokens.length; j < jj; j += 3) {
-                  var startRange = tokens[j];
-                  var endRange = tokens[j + 1];
-                  var code = tokens[j + 2];
-                  if (code == 0xFFFF) {
-                    // CMap is broken, assuming code == startRange
-                    code = startRange;
-                  }
-                  if (isArray(code)) {
-                    var codeindex = 0;
-                    while (startRange <= endRange) {
-                      charToUnicode[startRange] = code[codeindex++];
-                      ++startRange;
-                    }
-                  } else {
-                    while (startRange <= endRange) {
-                      charToUnicode[startRange] = code++;
-                      ++startRange;
-                    }
-                  }
-                }
-                break;
-
-              case 'endcidchar':
-              case 'endbfchar':
-                for (var j = 0, jj = tokens.length; j < jj; j += 2) {
-                  var index = tokens[j];
-                  var code = tokens[j + 1];
-                  charToUnicode[index] = code;
-                }
-                break;
-
-              case '':
-                break;
-
-              default:
-                if (token[0] >= '0' && token[0] <= '9')
-                  token = parseInt(token, 10); // a number
-                tokens.push(token);
-                token = '';
-            }
-            switch (octet) {
-              case 0x5B:
-                // begin list parsing
-                tokens.push(beginArrayToken);
-                break;
-              case 0x5D:
-                // collect array items
-                var items = [], item;
-                while (tokens.length &&
-                       (item = tokens.pop()) != beginArrayToken)
-                  items.unshift(item);
-                tokens.push(items);
-                break;
-            }
-          } else if (octet == 0x3E) {
-            if (token.length) {
-              // Heuristic: guessing chars size by checking numbers sizes
-              // in the CMap entries.
-              if (token.length == 2 && properties.composite)
-                properties.wideChars = false;
-
-              if (token.length <= 4) {
-                // parsing hex number
-                tokens.push(parseInt(token, 16));
-                token = '';
-              } else {
-                // parsing hex UTF-16BE numbers
-                var str = [];
-                for (var k = 0, kk = token.length; k < kk; k += 4) {
-                  var b = parseInt(token.substr(k, 4), 16);
-                  if (b <= 0x10) {
-                    k += 4;
-                    b = (b << 16) | parseInt(token.substr(k, 4), 16);
-                    b -= 0x10000;
-                    str.push(0xD800 | (b >> 10));
-                    str.push(0xDC00 | (b & 0x3FF));
-                    break;
-                  }
-                  str.push(b);
-                }
-                tokens.push(String.fromCharCode.apply(String, str));
-                token = '';
-              }
-            }
-          } else {
-            token += String.fromCharCode(octet);
-          }
-        }
+        var cmap = CMapFactory.create(cmapObj);
+        return cmap.map;
       }
-      return charToUnicode;
     },
     readCidToGidMap: function PartialEvaluator_readCidToGidMap(cidToGidStream) {
       // Extract the encoding from the CIDToGIDMap
@@ -1194,6 +1082,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       assertWellFormed(isName(type), 'invalid font Subtype');
 
       var composite = false;
+      debugger;
       if (type.name == 'Type0') {
         // If font is a composite
         //  - get the descendant font
@@ -1324,6 +1213,9 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         if (isName(cidEncoding)) {
           properties.cidEncoding = cidEncoding.name;
           properties.vertical = /-V$/.test(cidEncoding.name);
+        } else if (isStream(cidEncoding)) {
+          properties.cmap = CMapFactory.create(cidEncoding);
+          console.log(properties.cmap);
         }
       }
       this.extractWidths(dict, xref, descriptor, properties);
