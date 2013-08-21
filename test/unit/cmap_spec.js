@@ -27,7 +27,7 @@ describe('cmap', function() {
     expect(cmap.lookup(0x0B)).toEqual(0x05);
     expect(cmap.lookup(0x0C)).toBeUndefined();
   });
-  it('parses beginbfchar with array', function() {
+  it('parses beginbfrange with array', function() {
     var str = '1 beginbfrange\n' +
               '<0D> <12> [ 0 1 2 3 4 5 ]\n' +
               'endbfrange\n';
