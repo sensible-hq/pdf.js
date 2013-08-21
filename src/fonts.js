@@ -2438,6 +2438,7 @@ var Font = (function FontClosure() {
     this.composite = properties.composite;
     this.wideChars = properties.wideChars;
     this.hasEncoding = properties.hasEncoding;
+    this.cmap = properties.cmap; // !!!!!!!!!! remove cidencoding???
 
     this.fontMatrix = properties.fontMatrix;
     if (properties.type == 'Type3') {
@@ -2516,6 +2517,9 @@ var Font = (function FontClosure() {
       case 'TrueType':
       case 'CIDFontType2':
         this.mimetype = 'font/opentype';
+        if (properties.loadedName == 'g_font_680_0') {
+            debugger;
+        }
 
         // Repair the TrueType file. It is can be damaged in the point of
         // view of the sanitizer
@@ -3182,6 +3186,7 @@ var Font = (function FontClosure() {
           // TODO(mack): This section needs some more thought on whether the
           // heuristic is good enough. For now, it passes all the regression
           // tests.
+          // debugger;
           if (isSymbolicFont && platformId === 3 && encodingId === 0) {
             useTable = true;
             canBreak = true;
@@ -4809,16 +4814,18 @@ var Font = (function FontClosure() {
 
       var converter;
       var cidEncoding = this.cidEncoding;
+      // cidEncoding = 'GBK-EUC-H';
       if (cidEncoding) {
         converter = CMapConverterList[cidEncoding];
         if (converter) {
           chars = converter(chars);
+          // console.log(chars);
         } else if (cidEncoding.indexOf('Uni') !== 0 &&
                    cidEncoding.indexOf('Identity-') !== 0) {
           warn('Unsupported CMap: ' + cidEncoding);
         }
       }
-
+// console.log(this.cmap);
       if (!converter && this.cmap) {
         var i = 0;
         while (i < chars.length) {

@@ -929,6 +929,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         var cmap = CMapFactory.create(cmapObj);
         return cmap.map;
       }
+      return charToUnicode;
     },
     readCidToGidMap: function PartialEvaluator_readCidToGidMap(cidToGidStream) {
       // Extract the encoding from the CIDToGIDMap
@@ -1082,7 +1083,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       assertWellFormed(isName(type), 'invalid font Subtype');
 
       var composite = false;
-      debugger;
       if (type.name == 'Type0') {
         // If font is a composite
         //  - get the descendant font
@@ -1209,14 +1209,12 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       };
 
       if (composite) {
+        // debugger;
         var cidEncoding = baseDict.get('Encoding');
-        if (isName(cidEncoding)) {
+        if (isName(cidEncoding) && cidEncoding.name.indexOf('Identity-') === 0) {
           properties.cidEncoding = cidEncoding.name;
-          properties.vertical = /-V$/.test(cidEncoding.name);
-        } else if (isStream(cidEncoding)) {
-          properties.cmap = CMapFactory.create(cidEncoding);
-          console.log(properties.cmap);
         }
+        properties.cmap = CMapFactory.create(cidEncoding);
       }
       this.extractWidths(dict, xref, descriptor, properties);
       this.extractDataStructures(dict, baseDict, xref, properties);

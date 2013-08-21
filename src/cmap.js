@@ -21,7 +21,8 @@
 var CMap = (function CMapClosure() {
   function CMap() {
     this.codespaceRanges = [];
-    this.map = {};
+    this.map = [];
+    this.vertical = false;
   }
   CMap.prototype = {
     addCodespaceRange: function(n, low, high) {
@@ -61,9 +62,8 @@ var CMap = (function CMapClosure() {
       var codespaceRangesLen = this.codespaceRanges.length;
       // 9.7.6.2 CMap Mapping
       // The code length is at most 4.
-      debugger;
       for (var n = 0; n < 4; n++) {
-        c = (c << 8) | str.charCodeAt(offset + n);
+        c = ((c << 8) | str.charCodeAt(offset + n)) >>> 0;
         // Check each codespace range to see if it falls within.
         for (var k = 0; k < codespaceRangesLen; k++) {
           var codespaceRange = codespaceRanges[k];
@@ -82,13 +82,25 @@ var CMap = (function CMapClosure() {
   return CMap;
 })();
 
+var IdentityCmap = (function IdentityCmapClosure() {
+  function IdentityCmap(vertical, n) {
+    CMap.call(this);
+    this.vertical = vertical;
+    this.addCodespaceRange(n, 0, 0xffff);
+    this.mapRange(0, 0xffff, 0);
+  }
+  Util.inherit(IdentityCmap, CMap, {});
+
+  return IdentityCmap;
+})();
+
 var CMapFactory = (function CMapFactoryClosure() {
   function strToInt(str) {
     var a = 0;
     for (var i = 0; i < str.length; i++) {
       a = (a << 8) | str.charCodeAt(i);
     }
-    return a;
+    return a >>> 0;
   }
 
   function expectString(obj) {
@@ -191,7 +203,6 @@ var CMapFactory = (function CMapFactoryClosure() {
       if (!isString(obj)) {
         break;
       }
-
       var low = strToInt(obj);
       obj = lexer.getObj();
       if (!isString(obj)) {
@@ -235,15 +246,28 @@ var CMapFactory = (function CMapFactoryClosure() {
     }
   }
   return {
-    create: function (stream) {
-      var cmap = new CMap();
-      var lexer = new Lexer(stream);
-      try {
-        parseCmap(cmap, lexer);
-      } catch (e) {
-        warn('Invalid CMap data. ' + e);
+    create: function (encoding) {
+      if (isName(encoding)) {
+        // properties.vertical = /-V$/.test(cidEncoding.name);
+        switch (encoding.name) {
+          case 'Identity-H':
+            return new IdentityCmap(false, 2);
+          case 'Identity-V':
+            return new IdentityCmap(true, 2);
+          default:
+            return null;
+        }
+      } else if (isStream(encoding)) {
+        var cmap = new CMap();
+        var lexer = new Lexer(encoding);
+        try {
+          parseCmap(cmap, lexer);
+        } catch (e) {
+          warn('Invalid CMap data. ' + e);
+        }
+        return cmap;
       }
-      return cmap;
+      error('Encoding required.');
     }
   }
 })();

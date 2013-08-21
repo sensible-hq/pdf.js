@@ -72,5 +72,15 @@ describe('cmap', function() {
     expect(c[0]).toEqual(3);
     expect(c[1]).toEqual(4);
   });
+  it('decodes 4 byte codespace ranges', function() {
+    var str = '1 begincodespacerange\n' +
+              '<8EA1A1A1> <8EA1FEFE>\n' +
+              'endcodespacerange\n';
+    var stream = new StringStream(str);
+    var cmap = CMapFactory.create(stream);
+    var c = cmap.readCharCode(String.fromCharCode(0x8E, 0xA1, 0xA1, 0xA1), 0);
+    expect(c[0]).toEqual(0x8EA1A1A1);
+    expect(c[1]).toEqual(4);
+  });
 });
 
