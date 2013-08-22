@@ -15,30 +15,13 @@
  * limitations under the License.
  */
 /* globals assertWellFormed, calculateMD5, Catalog, error, info, isArray,
-           isArrayBuffer, isDict, isName, isStream, isString, Lexer,
+           isArrayBuffer, isName, isStream, isString, Lexer,
            Linearization, NullStream, PartialEvaluator, shadow, Stream,
-           StreamsSequenceStream, stringToPDFString, TODO, Util, warn, XRef,
+           StreamsSequenceStream, stringToPDFString, Util, XRef,
            MissingDataException, Promise, Annotation, ObjectLoader, OperatorList
            */
 
 'use strict';
-
-var globalScope = (typeof window === 'undefined') ? this : window;
-
-var isWorker = (typeof window == 'undefined');
-
-var ERRORS = 0, WARNINGS = 1, INFOS = 5;
-var verbosity = WARNINGS;
-
-// The global PDFJS object exposes the API
-// In production, it will be declared outside a global wrapper
-// In development, it will be declared here
-if (!globalScope.PDFJS) {
-  globalScope.PDFJS = {};
-}
-
-globalScope.PDFJS.pdfBug = false;
-
 
 var Page = (function PageClosure() {
 
@@ -343,7 +326,22 @@ var PDFDocument = (function PDFDocumentClosure() {
   PDFDocument.prototype = {
     parse: function PDFDocument_parse(recoveryMode) {
       this.setup(recoveryMode);
-      this.acroForm = this.catalog.catDict.get('AcroForm');
+      try {
+        // checking if AcroForm is present
+        this.acroForm = this.catalog.catDict.get('AcroForm');
+        if (this.acroForm) {
+          this.xfa = this.acroForm.get('XFA');
+          var fields = this.acroForm.get('Fields');
+          if ((!fields || !isArray(fields) || fields.length === 0) &&
+              !this.xfa) {
+            // no fields and no XFA -- not a form (?)
+            this.acroForm = null;
+          }
+        }
+      } catch (ex) {
+        info('Something wrong with AcroForm entry');
+        this.acroForm = null;
+      }
     },
 
     get linearization() {
@@ -455,7 +453,8 @@ var PDFDocument = (function PDFDocumentClosure() {
     get documentInfo() {
       var docInfo = {
         PDFFormatVersion: this.pdfFormatVersion,
-        IsAcroFormPresent: !!this.acroForm
+        IsAcroFormPresent: !!this.acroForm,
+        IsXFAPresent: !!this.xfa
       };
       var infoDict;
       try {

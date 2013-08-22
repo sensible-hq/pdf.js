@@ -49,7 +49,7 @@ var FindStates = {
 
 PDFJS.imageResourcesPath = './images/';
 //#if (FIREFOX || MOZCENTRAL || B2G || GENERIC || CHROME)
-//PDFJS.workerSrc = '../build/pdf.js';
+//PDFJS.workerSrc = '../build/pdf.worker.js';
 //#endif
 
 var mozL10n = document.mozL10n || document.webL10n;
@@ -1020,6 +1020,34 @@ var PDFView = {
         console.warn('Warning: AcroForm/XFA is not supported');
         PDFView.fallback();
       }
+
+//#if (FIREFOX || MOZCENTRAL)
+//    var versionId = String(info.PDFFormatVersion).slice(-1) | 0;
+//    var generatorId = 0;
+//    var KNOWN_GENERATORS = ["acrobat distiller", "acrobat pdfwritter",
+//     "adobe livecycle", "adobe pdf library", "adobe photoshop", "ghostscript",
+//     "tcpdf", "cairo", "dvipdfm", "dvips", "pdftex", "pdfkit", "itext",
+//     "prince", "quarkxpress", "mac os x", "microsoft", "openoffice", "oracle",
+//     "luradocument", "pdf-xchange", "antenna house", "aspose.cells", "fpdf"];
+//    var generatorId = 0;
+//    if (info.Producer) {
+//      KNOWN_GENERATORS.some(function (generator, s, i) {
+//        if (generator.indexOf(s) < 0) {
+//          return false;
+//        }
+//        generatorId = i + 1;
+//        return true;
+//      }.bind(null, info.Producer.toLowerCase()));
+//    }
+//    var formType = !info.IsAcroFormPresent ? null : info.IsXFAPresent ?
+//                   'xfa' : 'acroform';
+//    FirefoxCom.request('reportTelemetry', JSON.stringify({
+//      type: 'documentInfo',
+//      version: versionId,
+//      generator: generatorId,
+//      formType: formType
+//    }));
+//#endif
     });
   },
 
@@ -1928,6 +1956,12 @@ var PageView = function pageView(container, id, scale,
       });
       div.dispatchEvent(event);
 
+//#if (FIREFOX || MOZCENTRAL)
+//    FirefoxCom.request('reportTelemetry', JSON.stringify({
+//      type: 'pageInfo'
+//    }));
+//    // TODO add stream types report here
+//#endif
       callback();
     }
 
@@ -2259,11 +2293,17 @@ var DocumentOutlineView = function documentOutlineView(outline) {
 document.addEventListener('DOMContentLoaded', function webViewerLoad(evt) {
   PDFView.initialize();
 
-//#if !(FIREFOX || MOZCENTRAL || CHROME)
+//#if !(FIREFOX || MOZCENTRAL)
   var params = PDFView.parseQueryString(document.location.search.substring(1));
   var file = params.file || DEFAULT_URL;
 //#else
 //var file = window.location.href.split('#')[0];
+//#endif
+
+//#if CHROME
+//if (location.protocol !== 'chrome-extension:') {
+//  file = location.href.split('#')[0];
+//}
 //#endif
 
 //#if !(FIREFOX || MOZCENTRAL || CHROME)
