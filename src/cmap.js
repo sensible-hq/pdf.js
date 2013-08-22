@@ -34,8 +34,13 @@ var CMap = (function CMapClosure() {
     },
 
     mapRange: function(low, high, dstLow) {
+      var lastByte = dstLow.length - 1;
+      if (!isString(dstLow)) {
+        debugger;
+      }
       while (low <= high) {
-        this.map[low] = dstLow++;
+        this.map[low] = dstLow;
+        dstLow = dstLow.substr(0, lastByte) + String.fromCharCode(dstLow.charCodeAt(lastByte) + 1);
         ++low;
       }
     },
@@ -87,7 +92,7 @@ var IdentityCmap = (function IdentityCmapClosure() {
     CMap.call(this);
     this.vertical = vertical;
     this.addCodespaceRange(n, 0, 0xffff);
-    this.mapRange(0, 0xffff, 0);
+    this.mapRange(0, 0xffff, '\u0000');
   }
   Util.inherit(IdentityCmap, CMap, {});
 
@@ -126,7 +131,7 @@ var CMapFactory = (function CMapFactoryClosure() {
       obj = lexer.getObj();
       // TODO are /dstName used?
       expectString(obj);
-      var dst = strToInt(obj);
+      var dst = obj;
       cmap.mapOne(src, dst);
     }
   }
@@ -144,7 +149,7 @@ var CMapFactory = (function CMapFactoryClosure() {
       var high = strToInt(obj);
       obj = lexer.getObj();
       if (isInt(obj) || isString(obj)) {
-        var dstLow = isString(obj) ? strToInt(obj) : obj;
+        var dstLow = isInt(obj) ? String.fromCharCode(obj) : obj;
         cmap.mapRange(low, high, dstLow);
       } else if (isCmd(obj, '[')) {
         obj = lexer.getObj();
@@ -171,7 +176,7 @@ var CMapFactory = (function CMapFactoryClosure() {
       var src = strToInt(obj);
       obj = lexer.getObj();
       expectInt(obj);
-      var dst = obj;
+      var dst = String.fromCharCode(obj);
       cmap.mapOne(src, dst);
     }
   }
@@ -189,7 +194,7 @@ var CMapFactory = (function CMapFactoryClosure() {
       var high = strToInt(obj);
       obj = lexer.getObj();
       expectInt(obj);
-      var dstLow = obj;
+      var dstLow = String.fromCharCode(obj);
       cmap.mapRange(low, high, dstLow);
     }
   }

@@ -1211,7 +1211,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       if (composite) {
         // debugger;
         var cidEncoding = baseDict.get('Encoding');
-        if (isName(cidEncoding) && cidEncoding.name.indexOf('Identity-') === 0) {
+        if (isName(cidEncoding)) {
           properties.cidEncoding = cidEncoding.name;
         }
         properties.cmap = CMapFactory.create(cidEncoding);

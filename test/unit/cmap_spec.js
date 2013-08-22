@@ -12,8 +12,8 @@ describe('cmap', function() {
               'endbfchar\n';
     var stream = new StringStream(str);
     var cmap = CMapFactory.create(stream);
-    expect(cmap.lookup(0x03)).toEqual(0x00);
-    expect(cmap.lookup(0x04)).toEqual(0x01);
+    expect(cmap.lookup(0x03)).toEqual(String.fromCharCode(0x00));
+    expect(cmap.lookup(0x04)).toEqual(String.fromCharCode(0x01));
     expect(cmap.lookup(0x05)).toBeUndefined();
   });
   it('parses beginbfrange with range', function() {
@@ -23,8 +23,8 @@ describe('cmap', function() {
     var stream = new StringStream(str);
     var cmap = CMapFactory.create(stream);
     expect(cmap.lookup(0x05)).toBeUndefined();
-    expect(cmap.lookup(0x06)).toEqual(0x00);
-    expect(cmap.lookup(0x0B)).toEqual(0x05);
+    expect(cmap.lookup(0x06)).toEqual(String.fromCharCode(0x00));
+    expect(cmap.lookup(0x0B)).toEqual(String.fromCharCode(0x05));
     expect(cmap.lookup(0x0C)).toBeUndefined();
   });
   it('parses beginbfrange with array', function() {
@@ -44,7 +44,7 @@ describe('cmap', function() {
               'endcidchar\n';
     var stream = new StringStream(str);
     var cmap = CMapFactory.create(stream);
-    expect(cmap.lookup(0x14)).toEqual(0x00);
+    expect(cmap.lookup(0x14)).toEqual(String.fromCharCode(0x00));
     expect(cmap.lookup(0x15)).toBeUndefined();
   });
   it('parses begincidrange', function() {
@@ -54,8 +54,8 @@ describe('cmap', function() {
     var stream = new StringStream(str);
     var cmap = CMapFactory.create(stream);
     expect(cmap.lookup(0x15)).toBeUndefined();
-    expect(cmap.lookup(0x16)).toEqual(0x00);
-    expect(cmap.lookup(0x1B)).toEqual(0x05);
+    expect(cmap.lookup(0x16)).toEqual(String.fromCharCode(0x00));
+    expect(cmap.lookup(0x1B)).toEqual(String.fromCharCode(0x05));
     expect(cmap.lookup(0x1C)).toBeUndefined();
   });
   it('decodes codespace ranges', function() {
