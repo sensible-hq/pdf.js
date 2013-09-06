@@ -926,8 +926,23 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         if (!isIdentityMap)
           error('ToUnicode file cmap translation not implemented');
       } else if (isStream(cmapObj)) {
-        var cmap = CMapFactory.create(cmapObj);
-        return cmap.map;
+        var cmap = CMapFactory.create(cmapObj).map;
+        for (var i in cmap) {
+          var token = cmap[i];
+          var str = [];
+          for (var k = 0; k < token.length; k += 2) {
+            var w1 = (token.charCodeAt(k) << 8) | token.charCodeAt(k + 1);
+            if ((w1 & 0xF800) !== 0xD800) { // w1 < 0xD800 || w1 > 0xDFFF
+              str.push(w1);
+              continue;
+            }
+            k += 2;
+            var w2 = (token.charCodeAt(k) << 8) | token.charCodeAt(k + 1);
+            str.push(((w1 & 0x3ff) << 10) + (w2 & 0x3ff) + 0x10000);
+          }
+          cmap[i] = String.fromCharCode.apply(String, str);
+        }
+        return cmap;
       }
       return charToUnicode;
     },
@@ -1213,6 +1228,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         var cidEncoding = baseDict.get('Encoding');
         if (isName(cidEncoding)) {
           properties.cidEncoding = cidEncoding.name;
+          properties.vertical = /-V$/.test(cidEncoding.name);
         }
         properties.cmap = CMapFactory.create(cidEncoding);
       }

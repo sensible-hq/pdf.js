@@ -4251,8 +4251,12 @@ var Font = (function FontClosure() {
         var unicode = toUnicode[i];
         var fontCharCode = typeof unicode === 'object' ? unusedUnicode++ :
           unicode;
-        if (typeof unicode !== 'undefined')
+        if (typeof unicode !== 'undefined') {
+          if (isString(fontCharCode)) {
+            fontCharCode = fontCharCode.charCodeAt(0);
+          }
           result[i] = fontCharCode;
+        }
       }
       return result;
     },
@@ -4280,6 +4284,7 @@ var Font = (function FontClosure() {
     },
 
     loadCidToUnicode: function Font_loadCidToUnicode(properties) {
+      debugger;
       if (!properties.cidSystemInfo)
         return;
 
@@ -4406,6 +4411,7 @@ var Font = (function FontClosure() {
 
       switch (this.type) {
         case 'CIDFontType0':
+        debugger;
           var cid = this.unicodeToCID[charcode] || charcode;
           if (this.unicodeToCID.length > 0) {
             width = this.widths[cid];
@@ -4427,6 +4433,7 @@ var Font = (function FontClosure() {
             break;
           }
           fontCharCode = this.toFontChar[charcode] || charcode;
+
           break;
         case 'MMType1': // XXX at the moment only "standard" fonts are supported
         case 'Type1':
@@ -4483,8 +4490,8 @@ var Font = (function FontClosure() {
       }
 
       width = isNum(width) ? width : this.defaultWidth;
-      disabled = this.unicodeIsEnabled ?
-        !this.unicodeIsEnabled[fontCharCode] : false;
+      disabled = false; //this.unicodeIsEnabled ?
+        // !this.unicodeIsEnabled[fontCharCode] : false;
 
       var accent = null;
       if (this.seacMap && this.seacMap[fontCharCode]) {

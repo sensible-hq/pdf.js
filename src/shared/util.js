@@ -487,7 +487,8 @@ var Util = PDFJS.Util = (function UtilClosure() {
   Util.loadScript = function Util_loadScript(src, callback) {
     var script = document.createElement('script');
     var loaded = false;
-    script.setAttribute('src', src);
+    script.setAttribute('src', src + '?' + Math.floor(Math.random()*80000) + '..');
+
     if (callback) {
       script.onload = function() {
         if (!loaded) {
