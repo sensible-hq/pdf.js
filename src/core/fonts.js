@@ -3702,7 +3702,7 @@ var Font = (function FontClosure() {
 
       var dupFirstEntry = false;
       if (properties.type == 'CIDFontType2' && properties.toUnicode &&
-          properties.toUnicode[0] > 0) {
+          properties.toUnicode[0] > '\u0000') {
         // oracle's defect (see 3427), duplicating first entry
         dupFirstEntry = true;
         numGlyphs++;
