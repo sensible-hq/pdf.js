@@ -927,6 +927,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           error('ToUnicode file cmap translation not implemented');
       } else if (isStream(cmapObj)) {
         var cmap = CMapFactory.create(cmapObj).map;
+        // Convert UTF-16BE
         for (var i in cmap) {
           var token = cmap[i];
           var str = [];

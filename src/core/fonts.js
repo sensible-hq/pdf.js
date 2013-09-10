@@ -2198,7 +2198,6 @@ var Font = (function FontClosure() {
       this.vmetrics = properties.vmetrics;
       this.defaultVMetrics = properties.defaultVMetrics;
     }
-
     if (properties.toUnicode && properties.toUnicode.length > 0)
       this.toUnicode = properties.toUnicode;
     else
@@ -2261,9 +2260,6 @@ var Font = (function FontClosure() {
       case 'TrueType':
       case 'CIDFontType2':
         this.mimetype = 'font/opentype';
-        if (properties.loadedName == 'g_font_680_0') {
-            debugger;
-        }
 
         // Repair the TrueType file. It is can be damaged in the point of
         // view of the sanitizer
@@ -2925,7 +2921,6 @@ var Font = (function FontClosure() {
           // TODO(mack): This section needs some more thought on whether the
           // heuristic is good enough. For now, it passes all the regression
           // tests.
-          // debugger;
           if (isSymbolicFont && platformId === 3 && encodingId === 0) {
             useTable = true;
             canBreak = true;
@@ -4252,7 +4247,7 @@ var Font = (function FontClosure() {
         var fontCharCode = typeof unicode === 'object' ? unusedUnicode++ :
           unicode;
         if (typeof unicode !== 'undefined') {
-          if (isString(fontCharCode)) {
+          if (isString(fontCharCode) && fontCharCode.length === 1) {
             fontCharCode = fontCharCode.charCodeAt(0);
           }
           result[i] = fontCharCode;
@@ -4269,7 +4264,7 @@ var Font = (function FontClosure() {
         var isIdentityMap = toUnicode.length === 0;
         for (var i = firstChar, ii = lastChar; i <= ii; i++) {
           // TODO missing map the character according font's CMap
-          map[i] = isIdentityMap ? i : toUnicode[i];
+          map[i] = isIdentityMap ? String.fromCharCode(i) : toUnicode[i];
         }
       } else {
         for (var i = firstChar, ii = lastChar; i <= ii; i++) {
@@ -4277,14 +4272,13 @@ var Font = (function FontClosure() {
           if (!glyph)
             glyph = properties.baseEncoding[i];
           if (!!glyph && (glyph in GlyphsUnicode))
-            map[i] = GlyphsUnicode[glyph];
+            map[i] = String.fromCharCode(GlyphsUnicode[glyph]);
         }
       }
       this.toUnicode = map;
     },
 
     loadCidToUnicode: function Font_loadCidToUnicode(properties) {
-      debugger;
       if (!properties.cidSystemInfo)
         return;
 
@@ -4411,7 +4405,6 @@ var Font = (function FontClosure() {
 
       switch (this.type) {
         case 'CIDFontType0':
-        debugger;
           var cid = this.unicodeToCID[charcode] || charcode;
           if (this.unicodeToCID.length > 0) {
             width = this.widths[cid];
