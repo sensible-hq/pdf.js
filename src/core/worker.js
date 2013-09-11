@@ -225,6 +225,9 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
       PDFJS.maxImageSize = data.maxImageSize === undefined ?
                            -1 : data.maxImageSize;
 
+      PDFJS.cMapUrl = data.cMapUrl === undefined ?
+                           null : data.cMapUrl;
+
       getPdfManager(data).then(function pdfManagerReady() {
         loadDocument(false).then(onSuccess, function loadFailure(ex) {
           // Try again with recoveryMode == true

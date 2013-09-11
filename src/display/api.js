@@ -30,6 +30,13 @@
 PDFJS.maxImageSize = PDFJS.maxImageSize === undefined ? -1 : PDFJS.maxImageSize;
 
 /**
+ * The url of where the predefined Adobe CMaps are located. Include trailing
+ * slash.
+ * @var {String}
+ */
+PDFJS.cMapUrl = PDFJS.cMapUrl === undefined ? null : PDFJS.cMapUrl;
+
+/**
  * This is the main entry point for loading a PDF and interacting with it.
  * NOTE: If a URL is used to fetch the PDF data a standard XMLHttpRequest(XHR)
  * is used, which means it must follow the same origin rules that any XHR does
@@ -770,7 +777,8 @@ var WorkerTransport = (function WorkerTransportClosure() {
       this.messageHandler.send('GetDocRequest', {
         source: source,
         disableRange: PDFJS.disableRange,
-        maxImageSize: PDFJS.maxImageSize
+        maxImageSize: PDFJS.maxImageSize,
+        cMapUrl: PDFJS.cMapUrl
       });
     },
 

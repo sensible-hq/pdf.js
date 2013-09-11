@@ -1229,9 +1229,9 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         var cidEncoding = baseDict.get('Encoding');
         if (isName(cidEncoding)) {
           properties.cidEncoding = cidEncoding.name;
-          properties.vertical = /-V$/.test(cidEncoding.name);
         }
-        properties.cmap = CMapFactory.create(cidEncoding);
+        properties.cmap = CMapFactory.create(cidEncoding, PDFJS.cMapUrl, null);
+        properties.vertical = properties.cmap.vertical;
       }
       this.extractWidths(dict, xref, descriptor, properties);
       this.extractDataStructures(dict, baseDict, xref, properties);
