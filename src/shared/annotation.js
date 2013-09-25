@@ -100,6 +100,7 @@ var Annotation = (function AnnotationClosure() {
     }
 
     this.appearance = getDefaultAppearance(dict);
+    data.hasAppearance = !!this.appearance;
   }
 
   Annotation.prototype = {
@@ -406,7 +407,7 @@ var TextWidgetAnnotation = (function TextWidgetAnnotationClosure() {
   var parent = WidgetAnnotation.prototype;
   Util.inherit(TextWidgetAnnotation, WidgetAnnotation, {
     hasHtml: function TextWidgetAnnotation_hasHtml() {
-      return !!this.data.fieldValue;
+      return !this.data.hasAppearance && !!this.data.fieldValue;
     },
 
     getHtmlElement: function TextWidgetAnnotation_getHtmlElement(commonObjs) {
@@ -434,6 +435,9 @@ var TextWidgetAnnotation = (function TextWidgetAnnotationClosure() {
     },
 
     getOperatorList: function TextWidgetAnnotation_getOperatorList(evaluator) {
+      if (this.appearance) {
+        return Annotation.prototype.getOperatorList.call(this, evaluator);
+      }
 
       var promise = new Promise();
       var opList = new OperatorList();
@@ -539,7 +543,6 @@ var TextAnnotation = (function TextAnnotationClosure() {
       container.className = 'annotText';
 
       var image = document.createElement('img');
-      image.style.width = container.style.width;
       image.style.height = container.style.height;
       var iconName = item.name;
       image.src = PDFJS.imageResourcesPath + 'annotation-' +
@@ -567,15 +570,23 @@ var TextAnnotation = (function TextAnnotationClosure() {
             e.appendChild(document.createElement('br'));
         }
         text.appendChild(e);
-        image.addEventListener('mouseover', function annotationImageOver() {
+
+        var showAnnotation = function showAnnotation() {
           container.style.zIndex += 1;
           content.removeAttribute('hidden');
-        }, false);
+        };
 
-        image.addEventListener('mouseout', function annotationImageOut() {
-          container.style.zIndex -= 1;
-          content.setAttribute('hidden', true);
-        }, false);
+        var hideAnnotation = function hideAnnotation(e) {
+          if (e.toElement || e.relatedTarget) { // No context menu is used
+            container.style.zIndex -= 1;
+            content.setAttribute('hidden', true);
+          }
+        };
+
+        content.addEventListener('mouseover', showAnnotation, false);
+        content.addEventListener('mouseout', hideAnnotation, false);
+        image.addEventListener('mouseover', showAnnotation, false);
+        image.addEventListener('mouseout', hideAnnotation, false);
       }
 
       content.appendChild(title);

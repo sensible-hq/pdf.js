@@ -869,6 +869,13 @@
       "link": true,
       "type": "eq"
     },
+    { "id": "bug898853.pdf",
+      "file": "pdfs/bug898853.pdf",
+      "md5": "37c37702bf98d33f9f74e2380c4d1a3f",
+      "rounds": 1,
+      "type": "eq",
+      "about": "Has a multi-byte char codes."
+    },
     {  "id": "issue1912",
       "file": "pdfs/issue1912.pdf",
       "md5": "15305b7c2cba971e7423de3f6ad38fef",
@@ -896,6 +903,12 @@
       "rounds": 1,
       "link": true,
       "type": "eq"
+    },
+    {  "id": "helloworld-bad",
+      "file": "pdfs/helloworld-bad.pdf",
+      "md5": "bf5ab1cf7fe3a502c3754f55e6ceeabd",
+      "rounds": 1,
+      "type": "load"
     },
     {  "id": "issue818",
       "file": "pdfs/issue818.pdf",
@@ -990,6 +1003,14 @@
       "type": "eq",
       "about": "CFF CID font with font matrices in main top dict and sub top dict."
     },
+    {  "id": "issue3566",
+      "file": "pdfs/issue3566.pdf",
+      "md5": "e9ab02aa769f4c040a6fa52f00d6e3f0",
+      "rounds": 1,
+      "type": "eq",
+      "lastPage": 1,
+      "about": "CFF font with multiply-encoded glyph and no pdf encoding dict."
+    },
     {  "id": "issue1878",
       "file": "pdfs/issue1878.pdf",
       "md5": "b4fb0ce7c19368e7104dce3d0d34bcb3",
@@ -1062,6 +1083,13 @@
       "rounds": 1,
       "link": true,
       "type": "eq"
+    },
+    {  "id": "issue3584",
+      "file": "pdfs/issue3584.pdf",
+      "md5": "7a00646865a840eefc76f05c588b60ce",
+      "rounds": 1,
+      "type": "eq",
+      "about": "CFF font that is drawn with clipping."
     },
     {  "id": "annotation-tx",
       "file": "pdfs/annotation-tx.pdf",

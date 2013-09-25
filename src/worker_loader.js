@@ -36,6 +36,7 @@ var files = [
   'core/evaluator.js',
   'core/cmap.js',
   'core/fonts.js',
+  'core/font_renderer.js',
   'core/glyphlist.js',
   'core/image.js',
   'core/metrics.js',

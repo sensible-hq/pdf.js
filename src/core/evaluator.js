@@ -20,7 +20,7 @@
            isStream, isString, JpegStream, Lexer, Metrics, Name, Parser,
            Pattern, PDFImage, PDFJS, serifFonts, stdFontMap, symbolsFonts,
            TilingPattern, TODO, warn, Util, Promise,
-           RefSetCache, isRef */
+           RefSetCache, isRef, TextRenderingMode, CMapFactory */
 
 'use strict';
 
@@ -349,6 +349,31 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       return loadedName;
     },
 
+    handleText: function PartialEvaluator_handleText(chars) {
+      var font = this.state.font.translated;
+      var glyphs = font.charsToGlyphs(chars);
+      var isAddToPathSet = !!(this.state.textRenderingMode &
+                              TextRenderingMode.ADD_TO_PATH_FLAG);
+      if (font.data && (isAddToPathSet || PDFJS.disableFontFace)) {
+        for (var i = 0; i < glyphs.length; i++) {
+          if (glyphs[i] === null) {
+            continue;
+          }
+          var fontChar = glyphs[i].fontChar;
+          if (!font.renderer.hasBuiltPath(fontChar)) {
+            var path = font.renderer.getPathJs(fontChar);
+            this.handler.send('commonobj', [
+              font.loadedName + '_path_' + fontChar,
+              'FontPath',
+              path
+            ]);
+          }
+        }
+      }
+
+      return glyphs;
+    },
+
     setGState: function PartialEvaluator_setGState(resources, gState,
                                                    operatorList) {
 
@@ -631,19 +656,21 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               this.state = prev;
             }
           } else if (cmd === 'Tj') { // showText
-            args[0] = this.state.font.translated.charsToGlyphs(args[0]);
+            args[0] = this.handleText(args[0]);
           } else if (cmd === 'TJ') { // showSpacedText
             var arr = args[0];
             var arrLength = arr.length;
             for (var i = 0; i < arrLength; ++i) {
               if (isString(arr[i])) {
-                arr[i] = this.state.font.translated.charsToGlyphs(arr[i]);
+                arr[i] = this.handleText(arr[i]);
               }
             }
           } else if (cmd === '\'') { // nextLineShowText
-            args[0] = this.state.font.translated.charsToGlyphs(args[0]);
+            args[0] = this.handleText(args[0]);
           } else if (cmd === '"') { // nextLineSetSpacingShowText
-            args[2] = this.state.font.translated.charsToGlyphs(args[2]);
+            args[2] = this.handleText(args[2]);
+          } else if (cmd === 'Tr') { // setTextRenderingMode
+            this.state.textRenderingMode = args[0];
           }
 
           switch (fn) {
@@ -698,14 +725,18 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       var bidiTexts;
       var SPACE_FACTOR = 0.35;
       var MULTI_SPACE_FACTOR = 1.5;
+      var textState;
 
       if (!state) {
+        textState = new TextState();
         bidiTexts = [];
         state = {
+          textState: textState,
           bidiTexts: bidiTexts
         };
       } else {
         bidiTexts = state.bidiTexts;
+        textState = state.textState;
       }
 
       var self = this;
@@ -725,6 +756,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       var chunk = '';
       var font = null;
+      var charSpace = 0, wordSpace = 0;
       while (!isEOF(obj = parser.getObj())) {
         if (isCmd(obj)) {
           var cmd = obj.cmd;
@@ -732,6 +764,49 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
             // TODO: Add support for SAVE/RESTORE and XFORM here.
             case 'Tf':
               font = handleSetFont(args[0].name).translated;
+              textState.fontSize = args[1];
+              break;
+            case 'Ts':
+              textState.textRise = args[0];
+              break;
+            case 'Tz':
+              textState.textHScale = args[0] / 100;
+              break;
+            case 'TL':
+              textState.leading = args[0];
+              break;
+            case 'Td':
+              textState.translateTextMatrix(args[0], args[1]);
+              break;
+            case 'TD':
+              textState.leading = -args[1];
+              textState.translateTextMatrix(args[0], args[1]);
+              break;
+            case 'T*':
+              textState.translateTextMatrix(0, -textState.leading);
+              break;
+            case 'Tm':
+              textState.setTextMatrix(args[0], args[1],
+                                       args[2], args[3], args[4], args[5]);
+              break;
+            case 'Tc':
+              charSpace = args[0];
+              break;
+            case 'Tw':
+              wordSpace = args[0];
+              break;
+            case 'q':
+              textState.push();
+              break;
+            case 'Q':
+              textState.pop();
+              break;
+            case 'BT':
+              textState.initialiseTextObj();
+              break;
+            case 'cm':
+              textState.transformCTM(args[0], args[1], args[2],
+                                args[3], args[4], args[5]);
               break;
             case 'TJ':
               var items = args[0];
@@ -817,6 +892,15 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
           if (chunk !== '') {
             var bidiText = PDFJS.bidi(chunk, -1, font.vertical);
+            var renderParams = textState.calcRenderParams();
+            bidiText.x = renderParams.renderMatrix[4] - (textState.fontSize *
+                           renderParams.vScale * Math.sin(renderParams.angle));
+            bidiText.y = renderParams.renderMatrix[5] + (textState.fontSize *
+                           renderParams.vScale * Math.cos(renderParams.angle));
+            if (bidiText.dir == 'ttb') {
+              bidiText.x += renderParams.vScale / 2;
+              bidiText.y -= renderParams.vScale;
+            }
             bidiTexts.push(bidiText);
 
             chunk = '';
@@ -1432,10 +1516,83 @@ var OperatorList = (function OperatorListClosure() {
 
   return OperatorList;
 })();
+var TextState = (function TextStateClosure() {
+  function TextState() {
+    this.fontSize = 0;
+    this.ctm = [1, 0, 0, 1, 0, 0];
+    this.textMatrix = [1, 0, 0, 1, 0, 0];
+    this.stateStack = [];
+    //textState variables
+    this.leading = 0;
+    this.textHScale = 1;
+    this.textRise = 0;
+  }
+  TextState.prototype = {
+    push: function TextState_push() {
+      this.stateStack.push(this.ctm.slice());
+    },
+    pop: function TextStae_pop() {
+      this.ctm = this.stateStack.pop();
+    },
+    initialiseTextObj: function TextState_initialiseTextObj() {
+      var m = this.textMatrix;
+      m[0] = 1, m[1] = 0, m[2] = 0, m[3] = 1, m[4] = 0, m[5] = 0;
+    },
+    setTextMatrix: function TextState_setTextMatrix(a, b, c, d, e, f) {
+      var m = this.textMatrix;
+      m[0] = a, m[1] = b, m[2] = c, m[3] = d, m[4] = e, m[5] = f;
+    },
+    transformCTM: function TextState_transformCTM(a, b, c, d, e, f) {
+      var m = this.ctm;
+      var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
+      m[0] = m0 * a + m2 * b;
+      m[1] = m1 * a + m3 * b;
+      m[2] = m0 * c + m2 * d;
+      m[3] = m1 * c + m3 * d;
+      m[4] = m0 * e + m2 * f + m4;
+      m[5] = m1 * e + m3 * f + m5;
+    },
+    translateTextMatrix: function TextState_translateTextMatrix(x, y) {
+      var m = this.textMatrix;
+      m[4] = m[0] * x + m[2] * y + m[4];
+      m[5] = m[1] * x + m[3] * y + m[5];
+    },
+    calcRenderParams: function TextState_calcRenderingParams() {
+      var tm = this.textMatrix;
+      var cm = this.ctm;
+      var a = this.fontSize;
+      var b = a * this.textHScale;
+      var c = this.textRise;
+      var vScale = Math.sqrt((tm[2] * tm[2]) + (tm[3] * tm[3]));
+      var angle = Math.atan2(tm[1], tm[0]);
+      var m0 = tm[0] * cm[0] + tm[1] * cm[2];
+      var m1 = tm[0] * cm[1] + tm[1] * cm[3];
+      var m2 = tm[2] * cm[0] + tm[3] * cm[2];
+      var m3 = tm[2] * cm[1] + tm[3] * cm[3];
+      var m4 = tm[4] * cm[0] + tm[5] * cm[2] + cm[4];
+      var m5 = tm[4] * cm[1] + tm[5] * cm[3] + cm[5];
+      var renderMatrix = [
+        b * m0,
+        b * m1,
+        a * m2,
+        a * m3,
+        c * m2 + m4,
+        c * m3 + m5
+      ];
+      return {
+        renderMatrix: renderMatrix,
+        vScale: vScale,
+        angle: angle
+      };
+    },
+  };
+  return TextState;
+})();
 
 var EvalState = (function EvalStateClosure() {
   function EvalState() {
     this.font = null;
+    this.textRenderingMode = TextRenderingMode.FILL;
   }
   EvalState.prototype = {
     clone: function CanvasExtraState_clone() {

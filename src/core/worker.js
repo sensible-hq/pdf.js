@@ -224,6 +224,7 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
 
       PDFJS.maxImageSize = data.maxImageSize === undefined ?
                            -1 : data.maxImageSize;
+      PDFJS.disableFontFace = data.disableFontFace;
 
       PDFJS.cMapUrl = data.cMapUrl === undefined ?
                            null : data.cMapUrl;
