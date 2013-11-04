@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals PDFJS, PDFView */
+/* globals PDFJS, PDFView, PresentationMode */
 
 'use strict';
 
@@ -65,7 +65,8 @@ var PDFHistory = {
         // is opened in the web viewer.
         this.reInitialized = true;
       }
-      window.history.replaceState({ fingerprint: this.fingerprint }, '');
+      window.history.replaceState({ fingerprint: this.fingerprint }, '',
+          document.URL);
     }
 
     var self = this;
@@ -202,10 +203,14 @@ var PDFHistory = {
       }
       return;
     }
-    if (this.nextHashParam && this.nextHashParam === params.hash) {
-      this.nextHashParam = null;
-      this.updatePreviousBookmark = true;
-      return;
+    if (this.nextHashParam) {
+      if (this.nextHashParam === params.hash) {
+        this.nextHashParam = null;
+        this.updatePreviousBookmark = true;
+        return;
+      } else {
+        this.nextHashParam = null;
+      }
     }
 
     if (params.hash) {
@@ -260,7 +265,7 @@ var PDFHistory = {
       return null;
     }
     var params = { hash: this.currentBookmark, page: this.currentPage };
-    if (PDFView.isPresentationMode) {
+    if (PresentationMode.active) {
       params.hash = null;
     }
     return params;
@@ -287,9 +292,9 @@ var PDFHistory = {
       }
     }
     if (overwrite || this.uid === 0) {
-      window.history.replaceState(this._stateObj(params), '');
+      window.history.replaceState(this._stateObj(params), '', document.URL);
     } else {
-      window.history.pushState(this._stateObj(params), '');
+      window.history.pushState(this._stateObj(params), '', document.URL);
     }
     this.currentUid = this.uid++;
     this.current = params;

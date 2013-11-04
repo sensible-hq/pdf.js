@@ -3506,6 +3506,11 @@ var Font = (function FontClosure() {
                 callstack.push({data: data, i: i, stackTop: stack.length - 1});
                 functionsCalled.push(funcId);
                 var pc = ttContext.functionsDefined[funcId];
+                if (!pc) {
+                  warn('TT: CALL non-existent function');
+                  ttContext.hintsValid = false;
+                  return;
+                }
                 data = pc.data;
                 i = pc.i;
               }
@@ -3526,6 +3531,11 @@ var Font = (function FontClosure() {
               lastEndf = i;
             } else {
               var pc = callstack.pop();
+              if (!pc) {
+                warn('TT: ENDF bad stack');
+                ttContext.hintsValid = false;
+                return;
+              }
               var funcId = functionsCalled.pop();
               data = pc.data;
               i = pc.i;
@@ -5197,19 +5207,34 @@ var Type1Parser = (function Type1ParserClosure() {
 
               for (var j = 0; j < size; j++) {
                 var token = this.getToken();
-                if (token === 'dup') {
-                  var index = this.readInt();
-                  this.getToken(); // read in '/'
-                  var glyph = this.getToken();
-                  encoding[index] = glyph;
-                  this.getToken(); // read the in 'put'
+                // skipping till first dup or def (e.g. ignoring for statement)
+                while (token !== 'dup' && token !== 'def') {
+                  token = this.getToken();
+                  if (token === null) {
+                    return; // invalid header
+                  }
                 }
+                if (token === 'def') {
+                  break; // read all array data
+                }
+                var index = this.readInt();
+                this.getToken(); // read in '/'
+                var glyph = this.getToken();
+                encoding[index] = glyph;
+                this.getToken(); // read the in 'put'
               }
             }
             if (properties.overridableEncoding && encoding) {
               properties.baseEncoding = encoding;
               break;
             }
+            break;
+          case 'FontBBox':
+            var fontBBox = this.readNumberArray();
+            // adjusting ascent/descent
+            properties.ascent = fontBBox[3];
+            properties.descent = fontBBox[1];
+            properties.ascentScaled = true;
             break;
         }
       }
@@ -5531,18 +5556,22 @@ var CFFFont = (function CFFFontClosure() {
       var unassignedUnicodeItems = [];
       var inverseEncoding = [];
       var gidStart = 0;
-      // Even though the CFF font may not actually be a CID font is could have
-      // CID information in the font descriptor.
-      if (this.properties.cidSystemInfo) {
-        // According to section 9.7.4.2 if the font is actually a CID font then
-        // we should use the charset to map CIDs to GIDs. If it is not actually
-        // a CID font then CIDs can be mapped directly to GIDs.
+      // According to section 9.7.4.2 CIDFontType0C glyph selection should be
+      // handled differently.
+      if (this.properties.subtype === 'CIDFontType0C') {
         if (this.cff.isCIDFont) {
+          // If the font is actually a CID font then we should use the charset
+          // to map CIDs to GIDs.
           inverseEncoding = charsets;
         } else {
-          for (var i = 0, ii = charsets.length; i < charsets.length; i++) {
+          // If it is NOT actually a CID font then CIDs should be mapped
+          // directly to GIDs.
+          inverseEncoding = [];
+          for (var i = 0, ii = cff.charStrings.count; i < ii; i++) {
             inverseEncoding.push(i);
           }
+          // Use the identity map for charsets as well.
+          charsets = inverseEncoding;
         }
       } else {
         for (var charcode in encoding) {
