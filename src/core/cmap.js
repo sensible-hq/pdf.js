@@ -19,6 +19,12 @@
 'use strict';
 
 var BUILT_IN_CMAPS = [
+// << Start unicode maps.
+'Adobe-GB1-UCS2',
+'Adobe-CNS1-UCS2',
+'Adobe-Japan1-UCS2',
+'Adobe-Korea1-UCS2',
+// >> End unicode maps.
 '78-EUC-H',
 '78-EUC-V',
 '78-H',

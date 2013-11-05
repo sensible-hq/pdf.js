@@ -919,6 +919,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     extractDataStructures: function
       partialEvaluatorExtractDataStructures(dict, baseDict,
                                             xref, properties) {
+      debugger;
       // 9.10.2
       var toUnicode = dict.get('ToUnicode') ||
         baseDict.get('ToUnicode');
@@ -1001,14 +1002,12 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       properties.overridableEncoding = overridableEncoding;
     },
 
-    readToUnicode: function PartialEvaluator_readToUnicode(toUnicode, xref,
-                                                           properties) {
+    readToUnicode: function PartialEvaluator_readToUnicode(toUnicode) {
       var cmapObj = toUnicode;
       var charToUnicode = [];
       if (isName(cmapObj)) {
-        var isIdentityMap = cmapObj.name.substr(0, 9) == 'Identity-';
-        if (!isIdentityMap)
-          error('ToUnicode file cmap translation not implemented');
+        // !!!!!!! think about if we need to convert ucs2/utf16 differently
+        return CMapFactory.create(cmapObj).map;
       } else if (isStream(cmapObj)) {
         var cmap = CMapFactory.create(cmapObj).map;
         // Convert UTF-16BE
@@ -1029,7 +1028,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         }
         return cmap;
       }
-      return charToUnicode;
+      return null;
     },
     readCidToGidMap: function PartialEvaluator_readCidToGidMap(cidToGidStream) {
       // Extract the encoding from the CIDToGIDMap
@@ -1314,6 +1313,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         if (isName(cidEncoding)) {
           properties.cidEncoding = cidEncoding.name;
         }
+        debugger;
         properties.cmap = CMapFactory.create(cidEncoding, PDFJS.cMapUrl, null);
         properties.vertical = properties.cmap.vertical;
       }

@@ -2198,10 +2198,14 @@ var Font = (function FontClosure() {
       this.vmetrics = properties.vmetrics;
       this.defaultVMetrics = properties.defaultVMetrics;
     }
-    if (properties.toUnicode && properties.toUnicode.length > 0)
-      this.toUnicode = properties.toUnicode;
-    else
-      this.rebuildToUnicode(properties);
+
+    // debugger;
+    this.toUnicode = this.buildToUnicode(properties);
+    // if (properties.toUnicode && properties.toUnicode.length > 0)
+    //   this.toUnicode = properties.toUnicode;
+    // else
+    //   this.rebuildToUnicode(properties);
+
 
     this.toFontChar = this.buildToFontChar(this.toUnicode);
 
@@ -4253,6 +4257,83 @@ var Font = (function FontClosure() {
       return stringToArray(otf.file);
     },
 
+    buildToUnicode: function Font_buildToUnicode(properties) {
+      // Section 9.10.2 Mapping Character Codes to Unicode Values
+      debugger;
+      if (properties.toUnicode) {
+        return properties.toUnicode;
+      } else if (!properties.composite /* is simple font */) {
+        //if (encodingName === 'MacRomanEncoding' ||
+            // encodingName == 'MacExpertEncoding' ||
+            // encodingName === 'WinAnsiEncoding'
+            /* TODO or or that has an encoding whose Differences array includes only character names taken from the Adobe standard Latin character set and the set of named characters in the Symbol font (see Annex D):*/
+           // ) {
+          var toUnicode = [];
+          // /var encoding = Encodings[encodingName].slice();
+          var encoding = properties.baseEncoding.slice();
+          // Merge in the differences array.
+          var differences = properties.differences;
+          for (var charcode in differences) {
+            encoding[charcode] = differences[charcode];
+          }
+          for (var charcode in encoding) {
+            // a) Map the character code to a character name.
+            var glyphName = encoding[charcode];
+            // b) Look up the character name in the Adobe Glyph List (see the
+            //    Bibliography) to obtain the corresponding Unicode value.
+            if (glyphName === '' || !(glyphName in GlyphsUnicode)) {
+              continue;
+            }
+            toUnicode[charcode] = String.fromCharCode(GlyphsUnicode[glyphName]);
+          }
+          return toUnicode;
+        //}
+      } else if (properties.composite
+                 /* && is predefined */
+                 && !(properties.cmap instanceof IdentityCMap)
+                 /* || it uses special descendant char collection */) {
+        // If the font is a composite font that uses one of the predefined CMaps
+        // listed in Table 118 (except Identity–H and Identity–V) or whose
+        // descendant CIDFont uses the Adobe-GB1, Adobe-CNS1, Adobe-Japan1, or
+        // Adobe-Korea1 character collection:
+        // a) Map the character code to a character identifier (CID) according
+        // to the font’s CMap.
+        // b) Obtain the registry and ordering of the character collection used
+        // by the font’s CMap (for example, Adobe and Japan1) from its
+        // CIDSystemInfo dictionary.
+        var registry = properties.cidSystemInfo.registry;
+        var ordering = properties.cidSystemInfo.ordering;
+        debugger;
+        // c) Construct a second CMap name by concatenating the registry and
+        // ordering obtained in step (b) in the format registry–ordering–UCS2
+        // (for example, Adobe–Japan1–UCS2).
+        var ucs2CMapName = new Name(registry + '-' + ordering + '-UCS2');
+        console.log(ucs2CMapName);
+        // d) Obtain the CMap with the name constructed in step (c) (available
+        // from the ASN Web site; see the Bibliography).
+        var ucs2CMap = CMapFactory.create(ucs2CMapName, PDFJS.cMapUrl, null);
+        var cMap = properties.cmap;
+        var map = [];
+        debugger;
+        for (var charcode in cMap.map) {
+          var cid = cMap.map[charcode];
+          assert(cid.length === 1, '!!!!!! support longer ones');
+          // e) Map the CID obtained in step (a) according to the CMap obtained
+          // in step (d), producing a Unicode value.
+          var ucs2 = ucs2CMap.map[cid.charCodeAt(0)];
+          map[charcode] = (ucs2.charCodeAt(0) << 8) + ucs2.charCodeAt(1);
+        }
+        return map;
+      }
+      // The viewer's choice, just use an identity map.
+      var map = [];
+      var firstChar = properties.firstChar, lastChar = properties.lastChar;
+      for (var i = firstChar, ii = lastChar; i <= ii; i++) {
+        map[i] = String.fromCharCode(i);
+      }
+      return map;
+    },
+
     buildToFontChar: function Font_buildToFontChar(toUnicode) {
       var result = [];
       var unusedUnicode = CMAP_GLYPH_OFFSET;
@@ -4432,15 +4513,11 @@ var Font = (function FontClosure() {
           fontCharCode = this.toFontChar[cid] || cid;
           break;
         case 'CIDFontType2':
-          if (this.unicodeToCID.length > 0) {
-            var cid = this.unicodeToCID[charcode] || charcode;
-            width = this.widths[cid];
-            vmetric = this.vmetrics && this.vmetrics[cid];
-            fontCharCode = charcode;
-            break;
-          }
-          fontCharCode = this.toFontChar[charcode] || charcode;
-
+          // var cid = this.cmap.lookup(charcode).charCodeAt(0); // ?? // charcode
+          // width = this.widths[cid];
+          // vmetric = this.vmetrics && this.vmetrics[cid];
+          this.toFontChar[charcode];
+          fontCharCode = this.toFontChar[charcode]; //this.toUnicode[charcode];
           break;
         case 'MMType1': // XXX at the moment only "standard" fonts are supported
         case 'Type1':
@@ -4542,18 +4619,18 @@ var Font = (function FontClosure() {
       var converter;
       var cidEncoding = this.cidEncoding;
       // cidEncoding = 'GBK-EUC-H';
-      if (cidEncoding) {
-        converter = CMapConverterList[cidEncoding];
-        if (converter) {
-          chars = converter(chars);
-          // console.log(chars);
-        } else if (cidEncoding.indexOf('Uni') !== 0 &&
-                   cidEncoding.indexOf('Identity-') !== 0) {
-          warn('Unsupported CMap: ' + cidEncoding);
-        }
-      }
+      // if (cidEncoding) {
+      //   converter = CMapConverterList[cidEncoding];
+      //   if (converter) {
+      //     chars = converter(chars);
+      //     // console.log(chars);
+      //   } else if (cidEncoding.indexOf('Uni') !== 0 &&
+      //              cidEncoding.indexOf('Identity-') !== 0) {
+      //     warn('Unsupported CMap: ' + cidEncoding);
+      //   }
+      // }
 
-      if (!converter && this.cmap) {
+      if (this.cmap) {
         var i = 0;
         // composite fonts have multi-byte strings convert the string from
         // single-byte to multi-byte
@@ -5067,6 +5144,7 @@ var Type1Parser = (function Type1ParserClosure() {
         token = this.getToken();
         switch (token) {
           case 'CharStrings':
+          debugger;
             // The number immediately following CharStrings must be greater or
             // equal to the number of CharStrings.
             this.getToken();
