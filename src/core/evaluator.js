@@ -486,11 +486,11 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       if (!font.translated) {
         var translated;
-        try {
+        // try {
           translated = this.translateFont(font, xref);
-        } catch (e) {
-          translated = new ErrorFont(e instanceof Error ? e.message : e);
-        }
+        // } catch (e) {
+        //   translated = new ErrorFont(e instanceof Error ? e.message : e);
+        // }
         font.translated = translated;
       }
 
@@ -919,7 +919,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     extractDataStructures: function
       partialEvaluatorExtractDataStructures(dict, baseDict,
                                             xref, properties) {
-      debugger;
       // 9.10.2
       var toUnicode = dict.get('ToUnicode') ||
         baseDict.get('ToUnicode');
@@ -1000,6 +999,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       properties.baseEncoding = baseEncoding;
       properties.hasEncoding = hasEncoding;
       properties.overridableEncoding = overridableEncoding;
+      properties.dict = dict;
     },
 
     readToUnicode: function PartialEvaluator_readToUnicode(toUnicode) {
@@ -1308,12 +1308,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       };
 
       if (composite) {
-        // debugger;
         var cidEncoding = baseDict.get('Encoding');
         if (isName(cidEncoding)) {
           properties.cidEncoding = cidEncoding.name;
         }
-        debugger;
         properties.cmap = CMapFactory.create(cidEncoding, PDFJS.cMapUrl, null);
         properties.vertical = properties.cmap.vertical;
       }
