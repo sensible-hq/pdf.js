@@ -2324,9 +2324,8 @@ var Font = (function FontClosure() {
         // debugger;
         // console.log(simpleFontEncoding(cff, properties.dict));
         // die();
-
+debugger;
         var mapping = cff.getGlyphMapping(cff.charstrings, properties);
-
         // Wrap the CFF data inside an OTF font file
         data = this.convert(name, cff, properties, mapping);
         break;
@@ -2490,10 +2489,10 @@ var Font = (function FontClosure() {
     var toFontChar = [];
     for (var i = 0; i < mapping.length; i++) {
       /// REMOVE THIS CHECK
-      if (mapping[i].originalCharCode in toFontChar) {
-        debugger
-        die('already mapped');
-      }
+      // if (mapping[i].originalCharCode in toFontChar) {
+      //   debugger
+      //   die('already mapped');
+      // }
       toFontChar[mapping[i].originalCharCode] = mapping[i].fontCharCode;
     }
     return toFontChar;
@@ -2534,6 +2533,7 @@ var Font = (function FontClosure() {
   }
 
   function createCmapTable(glyphs) {
+    debugger;
     var ranges = getRanges(glyphs);
 
     var numTables = ranges[ranges.length - 1][1] > 0xFFFF ? 2 : 1;
@@ -4028,7 +4028,6 @@ var Font = (function FontClosure() {
         // Rewrite the whole toFontChar dictionary with a new one using the
         // information from the mappings in the cmap table.
         var newToFontChar = [];
-        debugger;
         if (this.isSymbolicFont) {
           for (var i = 0, ii = glyphs.length; i < ii; i++) {
             var glyph = glyphs[i];
@@ -4048,7 +4047,6 @@ var Font = (function FontClosure() {
             newToFontChar[glyph.charCode & 0xFF] = glyph.fontCharCode;
           }
         } else {
-          debugger;
 
           // for (var i = 0, ii = glyphs.length; i < ii; i++) {
           //   var glyph = glyphs[i];
@@ -5135,6 +5133,7 @@ var Type1Parser = (function Type1ParserClosure() {
         }
       };
       var token;
+      debugger;
       while ((token = this.getToken()) !== null) {
         if (token !== '/') {
           continue;
@@ -5643,12 +5642,64 @@ var CFFFont = (function CFFFontClosure() {
       var cff = this.cff;
       var charsets = cff.charset.charset;
       var encoding = cff.encoding ? cff.encoding.encoding : null;
+
+      var gidStart = 0;
+      if (charsets[0] === '.notdef') {
+        gidStart = 1;
+      }
+      var mapping = [];
+      for (var i = gidStart, ii = charsets.length; i < ii; i++) {
+        var found = false;
+        for (var charCode in encoding) {
+          if (encoding[charCode] === i) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          continue;
+          // debugger;
+          // throw new Error('didnt find');
+          debugger;
+          charCode = 0;
+        }
+         mapping.push({
+          glyphId: i,
+          charCode: charCode
+        });
+      }
+      this.charstrings = mapping.slice();//new Array(mapping.length);
+
+      if (this.properties.hasEncoding) {
+        for (var i = 0; i < this.properties.baseEncoding.length; i++) {
+          var charCode = i;
+          var glyphName = this.properties.baseEncoding[i];
+          if (glyphName !== '') {
+            var did = false;
+            for (var j = 0; j < mapping.length; j++) {
+              if (mapping[j].charCode === charCode) {
+                mapping[j].glyphId = charsets.indexOf(glyphName);
+                did = true;
+                break;
+              }
+            }
+            if (did) continue;
+            mapping.push({
+              glyphId: charsets.indexOf(glyphName),
+              charCode: charCode
+            });
+          }
+        }
+      }
+      return mapping;
+
       var charstrings = [];
       var unicodeUsed = [];
       var unassignedUnicodeItems = [];
       var inverseEncoding = [];
       var gidStart = 0;
       var mapping = [];
+
       // According to section 9.7.4.2 CIDFontType0C glyph selection should be
       // handled differently.
       if (this.properties.subtype === 'CIDFontType0C') {
@@ -5699,7 +5750,6 @@ var CFFFont = (function CFFFontClosure() {
         if (charCode < 0) {
           charCode = properties.baseEncoding.indexOf(glyphName);
           if (charCode < 0) {
-            debugger
             // !!!!!!!!! NOT SURE WE EVEN WANT THIS
             die('!!!!!!!!!!!!!!!!!! check this');
             charCode = glyphName in GlyphsUnicode ? GlyphsUnicode[glyphName] : -1;
