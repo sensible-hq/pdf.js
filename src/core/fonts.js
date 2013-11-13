@@ -6598,7 +6598,7 @@ var CFFEncodingPredefinedTypes = {
   STANDARD: 0,
   EXPERT: 1
 };
-var CFFCharsetEmbeddedTypes = {
+var CFFEncodingEmbeddedTypes = {
   FORMAT0: 0,
   FORMAT1: 1
 };
