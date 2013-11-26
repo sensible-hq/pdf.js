@@ -88,15 +88,12 @@ var TextLayerBuilder = function textLayerBuilder(options) {
         transform = 'rotate(' + rotation + 'deg) ' + transform;
         CustomStyle.setProp('transform' , textDiv, transform);
         CustomStyle.setProp('transformOrigin' , textDiv, '0% 0%');
-
-        textLayerDiv.appendChild(textDiv);
       }
     }
 
+    textLayerDiv.appendChild(textLayerFrag);
     this.renderingDone = true;
     this.updateMatches();
-
-    textLayerDiv.appendChild(textLayerFrag);
   };
 
   this.setupRenderLayoutTimer = function textLayerSetupRenderLayoutTimer() {
