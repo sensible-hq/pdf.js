@@ -2324,8 +2324,11 @@ var Font = (function FontClosure() {
         // debugger;
         // console.log(simpleFontEncoding(cff, properties.dict));
         // die();
-debugger;
         var mapping = cff.getGlyphMapping(cff.charstrings, properties);
+if (this.loadedName == 'g_font_9_0') {
+        console.log(mapping);
+        debugger;
+}
         // Wrap the CFF data inside an OTF font file
         data = this.convert(name, cff, properties, mapping);
         break;
@@ -2472,14 +2475,31 @@ debugger;
     file.virtualOffset += data.length;
   }
 
-  function adjustMapping(mapping) {
+  function adjustMapping(mapping, toUnicode) {
     var newMap = [];
     for (var i = 0; i < mapping.length; i++) {
-      // !!!!!!!!!! TODO adjust unicode values
+      // !!!!!!!!!! TODO make sure there are no duplicates!
+      var map = mapping[i];
+      var originalCharCode = map.charCode;
+      var fontCharCode = originalCharCode;
+      if (map.charCode in toUnicode) {
+        var temp = toUnicode[fontCharCode];
+        if (temp.length > 1) {
+          // TODO
+          DIE();
+        }
+        fontCharCode = temp.charCodeAt(0);
+      }
+      // Remap control characters.
+      if (fontCharCode !== 0 && fontCharCode < 32) {
+        // !!!!!!!!!! TODO make sure we move control chars!
+        debugger;
+        DIE();
+      }
       newMap.push({
         glyphId: mapping[i].glyphId,
-        fontCharCode: mapping[i].charCode,
-        originalCharCode: mapping[i].charCode
+        fontCharCode: fontCharCode,
+        originalCharCode: originalCharCode
       });
     }
     return newMap;
@@ -2533,7 +2553,6 @@ debugger;
   }
 
   function createCmapTable(glyphs) {
-    debugger;
     var ranges = getRanges(glyphs);
 
     var numTables = ranges[ranges.length - 1][1] > 0xFFFF ? 2 : 1;
@@ -4220,7 +4239,10 @@ debugger;
 
       var unitsPerEm = 1 / (properties.fontMatrix || FONT_IDENTITY_MATRIX)[0];
 
-      var newMapping = adjustMapping(mapping);
+if( this.loadedName === 'g_font_9_0') {
+  debugger;
+}
+      var newMapping = adjustMapping(mapping, this.toUnicode);
       this.toFontChar = zzbuildToFontChar(newMapping);
 
       var fields = {
@@ -5133,7 +5155,6 @@ var Type1Parser = (function Type1ParserClosure() {
         }
       };
       var token;
-      debugger;
       while ((token = this.getToken()) !== null) {
         if (token !== '/') {
           continue;
@@ -5457,6 +5478,7 @@ Type1Font.prototype = {
         charCode = properties.baseEncoding.indexOf(glyphName);
         if (charCode < 0) {
           // !!!!!!!!! NOT SURE WE EVEN WANT THIS
+          debugger;
           die('!!!!!!!!!!!!!!!!!! check this');
           charCode = glyphName in GlyphsUnicode ? GlyphsUnicode[glyphName] : -1;
           if (charCode < 0) {
