@@ -2473,7 +2473,6 @@ var Font = (function FontClosure() {
     var newMap = [];
     var usedFontCharCodes = [];
     var nextAvailableFontCharCode = CMAP_GLYPH_OFFSET;
-    debugger;
     for (var i = 0; i < mapping.length; i++) {
       // !!!!!!!!!! TODO make sure there are no duplicates!
       var map = mapping[i];
@@ -2527,16 +2526,17 @@ var Font = (function FontClosure() {
     for (var n = 0; n < length; ++n) {
       if (typeof glyphs[n].fontCharCode === 'undefined') {
         debugger;
+        die('undefined fontCharCode');
       }
       codes.push({ fontCharCode: glyphs[n].fontCharCode, glyphId: glyphs[n].glyphId });
     }
     codes.sort(function fontGetRangesSort(a, b) {
       return a.fontCharCode - b.fontCharCode;
     });
-    debugger;
     for (var i = 1; i < codes.length; i++) {
       if (codes[i - 1].fontCharCode == codes[i].fontCharCode) {
         debugger;
+        die('duplicate font char code');
       }
     }
 
@@ -2561,6 +2561,10 @@ var Font = (function FontClosure() {
 
   function createCmapTable(glyphs) {
     var ranges = getRanges(glyphs);
+
+    if (typeof ranges[ranges.length - 1] === 'undefined') {
+      debugger;
+    }
 
     var numTables = ranges[ranges.length - 1][1] > 0xFFFF ? 2 : 1;
     var cmap = '\x00\x00' + // version
@@ -5669,12 +5673,53 @@ var CFFFont = (function CFFFontClosure() {
       var encoding = cff.encoding ? cff.encoding.encoding : null;
       var mapping = [];
 
-      if (this.properties.differences && this.properties.differences.length) {
-        die('TODO!');
+      // if (this.properties.differences && this.properties.differences.length) {
+      //   debugger;
+      //   die('TODO!');
+      // }
+
+      if (this.properties.subtype === 'CIDFontType0C') {
+        if (this.cff.isCIDFont) {
+          // If the font is actually a CID font then we should use the charset
+          // to map CIDs to GIDs.
+          for (var glyphId = 0; glyphId < charsets.length; glyphId++) {
+            var charCode = charsets[glyphId];
+            if (charCode === '.notdef') {
+              // !!!!!!!!! why is there a notdef inserted here it should be a number
+              charCode = 0;
+            }
+            mapping.push({
+              glyphId: glyphId,
+              charCode: charCode
+            });
+          }
+        } else {
+          // If it is NOT actually a CID font then CIDs should be mapped
+          // directly to GIDs.
+          debugger;
+          for (var glyphId = 0; glyphId < cff.charStrings.count; glyphId++) {
+            mapping.push({
+              glyphId: glyphId,
+              charCode: glyphId
+            });
+          }
+        }
+        this.charstrings = mapping.slice(); // Needed?
+        return mapping;
       }
 
       for (var glyphId = 0; glyphId < charsets.length; glyphId++) {
         var glyphName = charsets[glyphId];
+        if (this.properties.differences && this.properties.differences.length) {
+          var charCode = this.properties.differences.indexOf(glyphName);
+          if (charCode >= 0) {
+            mapping.push({
+              glyphId: glyphId,
+              charCode: charCode
+            });
+            continue;
+          }
+        }
         if (this.properties.hasEncoding) {
           var charCode = this.properties.baseEncoding.indexOf(glyphName);
           if (charCode >= 0) {
