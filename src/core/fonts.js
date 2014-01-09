@@ -2288,9 +2288,7 @@ var Font = (function FontClosure() {
 
       // if at least one width is present, remeasure all chars when exists
       this.remeasure = Object.keys(this.widths).length > 0;
-
-      this.encoding = properties.baseEncoding;
-      this.noUnicodeAdaptation = true;
+      this.toFontChar = this.toUnicode;
       this.loadedName = fontName.split('-')[0];
       this.loading = false;
       return;
@@ -2307,7 +2305,6 @@ var Font = (function FontClosure() {
     if (subtype === 'OpenType') {
       type = 'OpenType';
     }
-
 
     var data;
     switch (type) {
