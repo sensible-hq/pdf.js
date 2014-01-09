@@ -2479,7 +2479,8 @@ var Font = (function FontClosure() {
       var map = mapping[i];
       var originalCharCode = map.charCode;
       var fontCharCode = originalCharCode;
-      if (map.charCode in toUnicode) {
+      // First try to map the value to a unicode position.
+      if (originalCharCode in toUnicode) {
         var temp = toUnicode[fontCharCode];
         if (temp.length > 1) {
           // TODO
@@ -2487,22 +2488,16 @@ var Font = (function FontClosure() {
         }
         fontCharCode = temp.charCodeAt(0);
       }
-      if (fontCharCode in usedFontCharCodes) {
+      if (fontCharCode in usedFontCharCodes ||
+          fontCharCode !== 0 && fontCharCode < 32) {
+        // Remap control characters or already used values.
         fontCharCode = nextAvailableFontCharCode++;
         if (fontCharCode in usedFontCharCodes) {
           die('WE SHOULD INCREMENT HERE IN A LOOP');
         }
       }
-      // Remap control characters.
-      if (fontCharCode !== 0 && fontCharCode < 32) {
-        // !!!!!!!!!! TODO make sure we move control chars!
-        warn('TODO!');
-        debugger;
-        // DIE();
-        continue;
-      }
       newMap.push({
-        glyphId: mapping[i].glyphId,
+        glyphId: map.glyphId,
         fontCharCode: fontCharCode,
         originalCharCode: originalCharCode
       });
@@ -3958,44 +3953,33 @@ var Font = (function FontClosure() {
         }
 
         glyphs = [];
-        ids = [];
-
-        var usedUnicodes = [];
-        var unassignedUnicodeItems = [];
-        var toFontChar = this.cidToFontChar || this.toFontChar;
         for (var i = 1; i < numGlyphs; i++) {
           var cid = gidToCidMap[i];
-          var unicode = toFontChar[cid];
-          if (!unicode || typeof unicode !== 'number' ||
-              isSpecialUnicode(unicode) || unicode in usedUnicodes) {
-            unassignedUnicodeItems.push(i);
-            continue;
-          }
-          usedUnicodes[unicode] = true;
-          glyphs.push({ unicode: unicode, code: cid });
-          ids.push(i);
+
+          glyphs.push({ charCode: cid, glyphId: i });
         }
 
         // unassigned codepoints will never be used for non-Identity CMap
         // because the input will be Unicode
-        if (!this.cidToFontChar) {
-          // trying to fit as many unassigned symbols as we can
-          // in the range allocated for the user defined symbols
-          var unusedUnicode = CMAP_GLYPH_OFFSET;
-          for (var j = 0, jj = unassignedUnicodeItems.length; j < jj; j++) {
-            var i = unassignedUnicodeItems[j];
-            var cid = gidToCidMap[i];
-            while (unusedUnicode in usedUnicodes)
-              unusedUnicode++;
-            if (unusedUnicode >= CMAP_GLYPH_OFFSET + GLYPH_AREA_SIZE)
-              break;
-            var unicode = unusedUnicode++;
-            this.toFontChar[cid] = unicode;
-            usedUnicodes[unicode] = true;
-            glyphs.push({ unicode: unicode, code: cid });
-            ids.push(i);
-          }
-        }
+        // if (!this.cidToFontChar) {
+        //   die()
+        //   // trying to fit as many unassigned symbols as we can
+        //   // in the range allocated for the user defined symbols
+        //   var unusedUnicode = CMAP_GLYPH_OFFSET;
+        //   for (var j = 0, jj = unassignedUnicodeItems.length; j < jj; j++) {
+        //     var i = unassignedUnicodeItems[j];
+        //     var cid = gidToCidMap[i];
+        //     while (unusedUnicode in usedUnicodes)
+        //       unusedUnicode++;
+        //     if (unusedUnicode >= CMAP_GLYPH_OFFSET + GLYPH_AREA_SIZE)
+        //       break;
+        //     var unicode = unusedUnicode++;
+        //     this.toFontChar[cid] = unicode;
+        //     usedUnicodes[unicode] = true;
+        //     glyphs.push({ unicode: unicode, code: cid });
+        //     ids.push(i);
+        //   }
+        // }
       } else {
         this.useToFontChar = true;
         // Most of the following logic in this code branch is based on the
@@ -4112,7 +4096,10 @@ var Font = (function FontClosure() {
       }
 
       // Converting glyphs and ids into font's cmap table
-      tables.cmap.data = createCmapTable(glyphs, ids);
+      var newMapping = adjustMapping(glyphs, this.toUnicode);
+      this.toFontChar = zzbuildToFontChar(newMapping);
+      // !!!!!!!!!! why was this passing ids
+      tables.cmap.data = createCmapTable(newMapping);
       var unicodeIsEnabled = [];
       for (var i = 0, ii = glyphs.length; i < ii; i++) {
         unicodeIsEnabled[glyphs[i].unicode] = true;
