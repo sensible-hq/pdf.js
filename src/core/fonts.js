@@ -2308,14 +2308,12 @@ var Font = (function FontClosure() {
       type = 'OpenType';
     }
 
+
     var data;
     switch (type) {
       case 'Type1':
       case 'CIDFontType0':
         this.mimetype = 'font/opentype';
-      if (this.loadedName === 'g_font_83_0') {
-        debugger;
-      }
         var cff = (subtype == 'Type1C' || subtype == 'CIDFontType0C') ?
           new CFFFont(file, properties) : new Type1Font(name, file, properties);
 
@@ -2325,10 +2323,6 @@ var Font = (function FontClosure() {
         // console.log(simpleFontEncoding(cff, properties.dict));
         // die();
         var mapping = cff.getGlyphMapping(cff.charstrings, properties);
-if (this.loadedName == 'g_font_9_0') {
-        console.log(mapping);
-        debugger;
-}
         // Wrap the CFF data inside an OTF font file
         data = this.convert(name, cff, properties, mapping);
         break;
@@ -2477,6 +2471,9 @@ if (this.loadedName == 'g_font_9_0') {
 
   function adjustMapping(mapping, toUnicode) {
     var newMap = [];
+    var usedFontCharCodes = [];
+    var nextAvailableFontCharCode = CMAP_GLYPH_OFFSET;
+    debugger;
     for (var i = 0; i < mapping.length; i++) {
       // !!!!!!!!!! TODO make sure there are no duplicates!
       var map = mapping[i];
@@ -2490,17 +2487,26 @@ if (this.loadedName == 'g_font_9_0') {
         }
         fontCharCode = temp.charCodeAt(0);
       }
+      if (fontCharCode in usedFontCharCodes) {
+        fontCharCode = nextAvailableFontCharCode++;
+        if (fontCharCode in usedFontCharCodes) {
+          die('WE SHOULD INCREMENT HERE IN A LOOP');
+        }
+      }
       // Remap control characters.
       if (fontCharCode !== 0 && fontCharCode < 32) {
         // !!!!!!!!!! TODO make sure we move control chars!
+        warn('TODO!');
         debugger;
-        DIE();
+        // DIE();
+        continue;
       }
       newMap.push({
         glyphId: mapping[i].glyphId,
         fontCharCode: fontCharCode,
         originalCharCode: originalCharCode
       });
+      usedFontCharCodes[fontCharCode] = true;
     }
     return newMap;
   }
@@ -2532,6 +2538,12 @@ if (this.loadedName == 'g_font_9_0') {
     codes.sort(function fontGetRangesSort(a, b) {
       return a.fontCharCode - b.fontCharCode;
     });
+    debugger;
+    for (var i = 1; i < codes.length; i++) {
+      if (codes[i - 1].fontCharCode == codes[i].fontCharCode) {
+        debugger;
+      }
+    }
 
     // Split the sorted codes into ranges.
     var ranges = [];
@@ -4239,9 +4251,6 @@ if (this.loadedName == 'g_font_9_0') {
 
       var unitsPerEm = 1 / (properties.fontMatrix || FONT_IDENTITY_MATRIX)[0];
 
-if( this.loadedName === 'g_font_9_0') {
-  debugger;
-}
       var newMapping = adjustMapping(mapping, this.toUnicode);
       this.toFontChar = zzbuildToFontChar(newMapping);
 
@@ -5477,13 +5486,20 @@ Type1Font.prototype = {
       if (charCode < 0) {
         charCode = properties.baseEncoding.indexOf(glyphName);
         if (charCode < 0) {
-          // !!!!!!!!! NOT SURE WE EVEN WANT THIS
-          debugger;
-          die('!!!!!!!!!!!!!!!!!! check this');
-          charCode = glyphName in GlyphsUnicode ? GlyphsUnicode[glyphName] : -1;
+          if (glyphName === '.notdef') {
+            charCode = 0;
+            // !!!!!!!!! Perhaps we need to define this in the encodings!!
+          }
+          
           if (charCode < 0) {
-            // NOT SURE HOW TO HANDLE THIS
-            die('!!!!!!!!!!!!!!!!!!');
+            // !!!!!!!!! NOT SURE WE EVEN WANT THIS
+            debugger;
+            die('!!!!!!!!!!!!!!!!!! check this');
+            charCode = glyphName in GlyphsUnicode ? GlyphsUnicode[glyphName] : -1;
+            if (charCode < 0) {
+              // NOT SURE HOW TO HANDLE THIS
+              die('!!!!!!!!!!!!!!!!!!');
+            }
           }
         }
       }
@@ -5664,6 +5680,42 @@ var CFFFont = (function CFFFontClosure() {
       var cff = this.cff;
       var charsets = cff.charset.charset;
       var encoding = cff.encoding ? cff.encoding.encoding : null;
+      var mapping = [];
+
+      if (this.properties.differences && this.properties.differences.length) {
+        die('TODO!');
+      }
+
+      for (var glyphId = 0; glyphId < charsets.length; glyphId++) {
+        var glyphName = charsets[glyphId];
+        if (this.properties.hasEncoding) {
+          var charCode = this.properties.baseEncoding.indexOf(glyphName);
+          if (charCode >= 0) {
+            mapping.push({
+              glyphId: glyphId,
+              charCode: charCode
+            });
+            continue;
+          }
+        }
+        for (var charCode in encoding) {
+          // When the CFF encoding is parsed we already map glyph name to glyphId.
+          if (encoding[charCode] == glyphId) {
+            var found = true;
+            break
+          }
+        }
+        if (found) {
+          mapping.push({
+            glyphId: glyphId,
+            charCode: charCode
+          });
+        }
+      }
+      this.charstrings = mapping.slice(); // Needed?
+      return mapping;
+
+
 
       var gidStart = 0;
       if (charsets[0] === '.notdef') {
@@ -5673,6 +5725,7 @@ var CFFFont = (function CFFFontClosure() {
       for (var i = gidStart, ii = charsets.length; i < ii; i++) {
         var found = false;
         for (var charCode in encoding) {
+          charCode = +charCode;
           if (encoding[charCode] === i) {
             found = true;
             break;
@@ -5693,23 +5746,39 @@ var CFFFont = (function CFFFontClosure() {
       this.charstrings = mapping.slice();//new Array(mapping.length);
 
       if (this.properties.hasEncoding) {
-        for (var i = 0; i < this.properties.baseEncoding.length; i++) {
+        nextEncoding: for (var i = 0; i < this.properties.baseEncoding.length; i++) {
           var charCode = i;
           var glyphName = this.properties.baseEncoding[i];
           if (glyphName !== '') {
             var did = false;
             for (var j = 0; j < mapping.length; j++) {
               if (mapping[j].charCode === charCode) {
-                mapping[j].glyphId = charsets.indexOf(glyphName);
-                did = true;
-                break;
+                var z = charsets.indexOf(glyphName);
+                if (z < 0) {
+                  debugger;
+                  did = true;
+                  continue nextEncoding;
+                }
+                mapping[j].glyphId = z;
+                if (mapping[j].glyphId === -1) {
+                  debugger;
+                }
+                // did = true;
+                continue nextEncoding;
               }
             }
-            if (did) continue;
+            // if (did) continue;
+            var z2 = charsets.indexOf(glyphName);
+            if (z2 < 0) {
+              continue;
+            }
             mapping.push({
-              glyphId: charsets.indexOf(glyphName),
+              glyphId: z2,
               charCode: charCode
             });
+            if (charsets.indexOf(glyphName) === -1) {
+                  debugger;
+                }
           }
         }
       }
