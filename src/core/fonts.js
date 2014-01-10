@@ -5496,17 +5496,10 @@ Type1Font.prototype = {
       var glyphName = glyph.glyphName;
       var charCode = properties.differences.indexOf(glyphName);
       if (charCode >= 0) {
-        charCodes.push(charCode);
-        // Some pdfs have multiple char codes mapped to the same name.
-        charCode = properties.differences.indexOf(glyphName, charCode + 1);
-        if (charCode >= 0) {
-          debugger;
-          charCode = properties.differences.indexOf(glyphName, charCode + 1);
-          if (charCode >= 0) {
-            die('more duplictes found')
-          }
-
+        while (charCodes >= 0) {
           charCodes.push(charCode);
+          // Some pdfs have multiple char codes mapped to the same name.
+          charCode = properties.differences.indexOf(glyphName, charCode + 1);
         }
       } else {
         charCode = properties.baseEncoding.indexOf(glyphName);
