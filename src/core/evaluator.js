@@ -1125,7 +1125,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           if (isName(baseFontName)) {
             var metrics = this.getBaseFontMetrics(baseFontName.name);
 
-            glyphsWidths = metrics.widths;
+            glyphsWidths = zzWidths(metrics.widths, properties);
             defaultWidth = metrics.defaultWidth;
           }
         }
@@ -1150,7 +1150,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         properties.flags |= FontFlags.FixedPitch;
 
       properties.defaultWidth = defaultWidth;
-      properties.widths = zzWidths(glyphsWidths, properties);
+      properties.widths = glyphsWidths;
       properties.defaultVMetrics = defaultVMetrics;
       properties.vmetrics = glyphsVMetrics;
     },
