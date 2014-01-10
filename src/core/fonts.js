@@ -5341,10 +5341,12 @@ var Type1Parser = (function Type1ParserClosure() {
               properties.baseEncoding = encoding;
               break;
             }
-            if (encoding) {
-              console.log('!!!!!!!!! hi: ' + zzEncoding);
-              properties.zzEncoding = encoding;
-            }
+            // !!!!!!!!!! issue1685 triggers this, do we need the encoding?
+            // if (encoding) {
+            //   debugger;
+            //   console.log('!!!!!!!!! hi: ' + zzEncoding);
+            //   properties.zzEncoding = encoding;
+            // }
             break;
           case 'FontBBox':
             var fontBBox = this.readNumberArray();
