@@ -3913,6 +3913,10 @@ var Font = (function FontClosure() {
         }
       }
 
+      if (this.loadedName === 'g_font_10_0') {
+    debugger;
+}
+
       var glyphs, ids;
       if (properties.type == 'CIDFontType2') {
         // Replace the old CMAP table with a shiny new one
@@ -3982,7 +3986,6 @@ var Font = (function FontClosure() {
         //   }
         // }
       } else {
-        this.useToFontChar = true;
         // Most of the following logic in this code branch is based on the
         // 9.6.6.4 of the PDF spec.
 
@@ -3994,6 +3997,11 @@ var Font = (function FontClosure() {
         // better check for this.
         var cmapTable = readCmapTable(tables.cmap, font, this.hasEncoding,
             this.isSymbolicFont);
+        var cmapPlatformId = cmapTable.platformId;
+        var cmapEncodingId = cmapTable.encodingId;
+        var cmapMappings = cmapTable.mappings;
+        var cmapMappingsLength = cmapMappings.length;
+        var glyphs = [];
 
         // TODO(mack): If the (3, 0) cmap table used, then the font is
         // symbolic. The range of charcodes in the cmap table should be
@@ -4005,48 +4013,48 @@ var Font = (function FontClosure() {
         // If it is not, we should change not consider this a symbolic font
         this.isSymbolicFont = cmapTable.isSymbolicFont;
 
-        var cmapPlatformId = cmapTable.platformId;
-        var cmapEncodingId = cmapTable.encodingId;
-        var cmapMappings = cmapTable.mappings;
-        var cmapMappingsLength = cmapMappings.length;
-        var glyphs = [];
-        var ids = [];
-        for (var i = 0; i < cmapMappingsLength; ++i) {
-          var cmapMapping = cmapMappings[i];
-          var charcode = cmapMapping.charcode;
-          var unicode = cmapCharcodeToUnicode(charcode, this.isSymbolicFont,
-              cmapPlatformId, cmapEncodingId);
 
-          if (!unicode) {
-            // TODO(mack): gotta check if skipping mappings where we cannot find
-            // a unicode is the correct behaviour
-            continue;
+        if (!this.isSymbolicFont && this.hasEncoding) {
+          // !!!!!!! stricter check on MacRomanEncoding or WinAnsiEncoding
+          // The base encoding already has been initialized and updated with the
+          // differences array at this point. Now fill any empty spots with the
+          // StandardEncoding.
+          for (var charCode = 0; charCode < 255; charCode++) {
+            var glyphName;
+            if (charCode in properties.baseEncoding && properties.baseEncoding !== '') {
+              glyphName = properties.baseEncoding[charCode];
+            } else {
+              glyphName = Encodings.StandardEncoding[charCode];
+            }
+            if (!glyphName) {
+              continue;
+            }
+
+            var unicodeOrCharCode;
+            if (cmapPlatformId === 3 && cmapEncodingId === 1) {
+              unicodeOrCharCode = GlyphsUnicode[glyphName];
+            } else if (cmapPlatformId === 1 && cmapEncodingId === 0) {
+              // !!!!!!!! todo update mac roman with mac os table
+              debugger;
+              unicodeOrCharCode = Encodings.MacRomanEncoding.indexOf(glyphName);
+            } else {
+              die('todo alternative cmap encoding');
+            }
+
+            for (var i = 0; i < cmapMappingsLength; ++i) {
+              // !!!!!!!!! TODO Fix this so its char*C*ode
+              if (cmapMappings[i].charcode === unicodeOrCharCode) {
+                glyphs.push({
+                  charCode: charCode,
+                  glyphId: cmapMappings[i].glyphId
+                });
+                break;
+              }
+            }
           }
-          glyphs.push({
-            charCode: charcode,
-            fontCharCode: unicode,
-            glyphId: cmapMapping.glyphId
-          });
-          ids.push(cmapMapping.glyphId);
-        }
-
-        var hasShortCmap = cmapTable.hasShortCmap;
-        var toFontChar = this.toFontChar;
-
-        // if (hasShortCmap && ids.length == numGlyphs) {
-        //   // Fixes the short cmap tables -- some generators use incorrect
-        //   // glyph id.
-        //   for (var i = 0, ii = ids.length; i < ii; i++) {
-        //     ids[i] = i;
-        //   }
-        // }
-
-        // Rewrite the whole toFontChar dictionary with a new one using the
-        // information from the mappings in the cmap table.
-        var newToFontChar = [];
-        if (this.isSymbolicFont) {
-          for (var i = 0, ii = glyphs.length; i < ii; i++) {
-            var glyph = glyphs[i];
+        } else {
+          if (cmapPlatformId === 3 && cmapEncodingId === 0 ||
+              cmapPlatformId === 1 && cmapEncodingId === 0) {
             // For (3, 0) cmap tables:
             // The charcode key being stored in toFontChar is the lower byte
             // of the two-byte charcodes of the cmap table since according to
@@ -4060,39 +4068,41 @@ var Font = (function FontClosure() {
             // associated glyph descriptions from the subtable'. This means
             // charcodes in the cmap will be single bytes, so no-op since
             // glyph.charCode & 0xFF === glyph.charCode
-            newToFontChar[glyph.charCode & 0xFF] = glyph.fontCharCode;
-          }
-        } else {
-
-          // for (var i = 0, ii = glyphs.length; i < ii; i++) {
-          //   var glyph = glyphs[i];
-          // }
-
-          var encoding = properties.baseEncoding;
-          var differences = properties.differences;
-
-          // TODO(mack): check if it is necessary to shift control characters
-          // for non-symbolic fonts so that browsers dont't render them using
-          // space characters
-
-          var glyphCodeMapping = cmapTable.glyphCodeMapping;
-          for (var charcode = 0; charcode < encoding.length; ++charcode) {
-            if (!encoding.hasOwnProperty(charcode)) {
-              continue;
+            for (var i = 0; i < cmapMappingsLength; ++i) {
+              // !!!!!!!!! TODO Fix this so its char*C*ode
+              glyphs.push({
+                charCode: cmapMappings[i].charcode & 0xFF,
+                glyphId: cmapMappings[i].glyphId
+              });
             }
-            var unicode = charcode in this.toUnicode ? this.toUnicode[charcode].charCodeAt(0) : charcode;
-            newToFontChar[charcode] = unicode;
+          } else {
+            die('todo alternative cmap encoding222');
           }
         }
-        this.toFontChar = toFontChar = newToFontChar;
 
-        // createGlyphNameMap(glyphs, ids, properties);
-        // this.glyphNameMap = properties.glyphNameMap;
+        // if (hasShortCmap && ids.length == numGlyphs) {
+        //   // Fixes the short cmap tables -- some generators use incorrect
+        //   // glyph id.
+        //   for (var i = 0, ii = ids.length; i < ii; i++) {
+        //     ids[i] = i;
+        //   }
+        // }
+
+        // Rewrite the whole toFontChar dictionary with a new one using the
+        // information from the mappings in the cmap table.
+        // if (this.isSymbolicFont) {
+        //   // die('verify');
+        //   debugger;
+        //   // for (var i = 0, ii = glyphs.length; i < ii; i++) {
+        //     // newToFontChar[glyph.charCode & 0xFF] = glyph.fontCharCode;
+        //   }
+        // }
       }
 
       if (glyphs.length === 0) {
+        // die('verify2');
         // defines at least one glyph
-        glyphs.push({ unicode: 0xF000, code: 0xF000, glyph: '.notdef' });
+        glyphs.push({ charCode: 0, glyphId: 0 });
         // ids.push(0);
       }
 
