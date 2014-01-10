@@ -2479,13 +2479,14 @@ var Font = (function FontClosure() {
       if (originalCharCode in toUnicode) {
         var temp = toUnicode[fontCharCode];
         if (temp.length > 1) {
-          // TODO
-          DIE();
+          // !!!!!!!!!!! how do we handle something like 'th' TODO
+          warn('longer value in toUnicode');
+        } else {
+          fontCharCode = temp.charCodeAt(0);
         }
-        fontCharCode = temp.charCodeAt(0);
       }
       if (fontCharCode in usedFontCharCodes ||
-          fontCharCode !== 0 && fontCharCode < 32) {
+          fontCharCode !== 0 && fontCharCode <= 0x1f || fontCharCode === 0x7F || (fontCharCode >= 0x80 && fontCharCode <= 0x9F)) {
         // Remap control characters or already used values.
         fontCharCode = nextAvailableFontCharCode++;
         if (fontCharCode in usedFontCharCodes) {
@@ -4111,11 +4112,11 @@ var Font = (function FontClosure() {
       this.toFontChar = zzbuildToFontChar(newMapping);
       // !!!!!!!!!! why was this passing ids
       tables.cmap.data = createCmapTable(newMapping);
-      var unicodeIsEnabled = [];
-      for (var i = 0, ii = glyphs.length; i < ii; i++) {
-        unicodeIsEnabled[glyphs[i].unicode] = true;
-      }
-      this.unicodeIsEnabled = unicodeIsEnabled;
+      // var unicodeIsEnabled = [];
+      // for (var i = 0, ii = glyphs.length; i < ii; i++) {
+      //   unicodeIsEnabled[glyphs[i].unicode] = true;
+      // }
+      // this.unicodeIsEnabled = unicodeIsEnabled;
 
       if (!tables['OS/2'] || !validateOS2Table(tables['OS/2'])) {
         // extract some more font properties from the OpenType head and
