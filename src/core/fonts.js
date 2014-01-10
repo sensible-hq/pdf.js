@@ -4351,9 +4351,11 @@ var Font = (function FontClosure() {
 
     buildToUnicode: function Font_buildToUnicode(properties) {
       // Section 9.10.2 Mapping Character Codes to Unicode Values
+      debugger;
       if (properties.toUnicode) {
         return properties.toUnicode;
-      } else if (!properties.composite /* is simple font */) {
+      }
+      if (!properties.composite /* is simple font */) {
         //if (encodingName === 'MacRomanEncoding' ||
             // encodingName == 'MacExpertEncoding' ||
             // encodingName === 'WinAnsiEncoding'
@@ -4379,14 +4381,20 @@ var Font = (function FontClosure() {
           }
           return toUnicode;
         //}
-      } else if (properties.composite
+      }
+      // If the font is a composite font that uses one of the predefined CMaps
+      // listed in Table 118 (except Identity–H and Identity–V) or whose
+      // descendant CIDFont uses the Adobe-GB1, Adobe-CNS1, Adobe-Japan1, or
+      // Adobe-Korea1 character collection:
+      if (properties.composite
                  /* && is predefined */
-                 && !(properties.cmap instanceof IdentityCMap)
-                 /* || it uses special descendant char collection */) {
-        // If the font is a composite font that uses one of the predefined CMaps
-        // listed in Table 118 (except Identity–H and Identity–V) or whose
-        // descendant CIDFont uses the Adobe-GB1, Adobe-CNS1, Adobe-Japan1, or
-        // Adobe-Korea1 character collection:
+                 && (!(properties.cmap instanceof IdentityCMap) ||
+                      (properties.cidSystemInfo.registry === 'Adobe' &&
+                       (properties.cidSystemInfo.ordering === 'GB1' ||
+                        properties.cidSystemInfo.ordering === 'CNS1' ||
+                        properties.cidSystemInfo.ordering === 'Japan1' ||
+                        properties.cidSystemInfo.ordering === 'Korea1')))) {
+        // Then:
         // a) Map the character code to a character identifier (CID) according
         // to the font’s CMap.
         // b) Obtain the registry and ordering of the character collection used
@@ -4398,7 +4406,6 @@ var Font = (function FontClosure() {
         // ordering obtained in step (b) in the format registry–ordering–UCS2
         // (for example, Adobe–Japan1–UCS2).
         var ucs2CMapName = new Name(registry + '-' + ordering + '-UCS2');
-        console.log(ucs2CMapName);
         // d) Obtain the CMap with the name constructed in step (c) (available
         // from the ASN Web site; see the Bibliography).
         var ucs2CMap = CMapFactory.create(ucs2CMapName, PDFJS.cMapUrl, null);
@@ -4410,6 +4417,9 @@ var Font = (function FontClosure() {
           // e) Map the CID obtained in step (a) according to the CMap obtained
           // in step (d), producing a Unicode value.
           var ucs2 = ucs2CMap.map[cid.charCodeAt(0)];
+          if (!ucs2) {
+            continue;
+          }
           map[charcode] = String.fromCharCode((ucs2.charCodeAt(0) << 8) + ucs2.charCodeAt(1));
         }
         return map;
