@@ -2271,7 +2271,7 @@ var Font = (function FontClosure() {
 
 
     this.toFontChar = [];
-
+debugger;
     if (!file) {
       // The file data is not specified. Trying to fix the font name
       // to be used with the canvas.font.
@@ -2288,7 +2288,14 @@ var Font = (function FontClosure() {
 
       // if at least one width is present, remeasure all chars when exists
       this.remeasure = Object.keys(this.widths).length > 0;
-      this.toFontChar = this.toUnicode;
+      var z = [];
+      for (var charCode in this.toUnicode) {
+        if (this.toUnicode[charCode].length > 2) {
+          die();
+        }
+        z[charCode] = this.toUnicode[charCode].charCodeAt(0);
+      }
+      this.toFontChar = z;
       this.loadedName = fontName.split('-')[0];
       this.loading = false;
       return;
@@ -4655,7 +4662,7 @@ var Font = (function FontClosure() {
       //     warn('Unsupported CMap: ' + cidEncoding);
       //   }
       // }
-
+debugger;
       if (this.cmap) {
         var i = 0;
         // composite fonts have multi-byte strings convert the string from
@@ -5491,11 +5498,14 @@ Type1Font.prototype = {
           }
           
           if (charCode < 0) {
-            // !!!!!!!!! NOT SURE WE EVEN WANT THIS
-            debugger;
-            die('!!!!!!!!!!!!!!!!!! check this');
+            // !!!!!!!!! NOT SURE WE EVEN WANT THIS happens in issue3115
+            warn('cant find charcode from glyphname');
+            //die('!!!!!!!!!!!!!!!!!! check this');
             charCode = glyphName in GlyphsUnicode ? GlyphsUnicode[glyphName] : -1;
             if (charCode < 0) {
+              warn('cant find charcode from glyphname even in adobe glyph list');
+              continue;
+              debugger;
               // NOT SURE HOW TO HANDLE THIS
               die('!!!!!!!!!!!!!!!!!!');
             }
