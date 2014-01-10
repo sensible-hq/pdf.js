@@ -2273,7 +2273,7 @@ var Font = (function FontClosure() {
 
     this.toFontChar = [];
     if (!file) {
-      debugger;
+      this.missingFile = true;
       // The file data is not specified. Trying to fix the font name
       // to be used with the canvas.font.
       var fontName = name.replace(/[,_]/g, '-');
@@ -4604,6 +4604,9 @@ var Font = (function FontClosure() {
           // First try the toFontChar map, if it's not there then try falling back
           // to the unicodeChars(which may just be the charcode).
           fontCharCode = this.toFontChar[charcode] || unicodeChars;
+          if (this.missingFile) {
+            fontCharCode = mapPrivateUseChars(fontCharCode);
+          }
           break;
       }
 
