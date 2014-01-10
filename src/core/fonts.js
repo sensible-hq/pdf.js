@@ -2326,9 +2326,8 @@ var Font = (function FontClosure() {
         // debugger;
         // console.log(simpleFontEncoding(cff, properties.dict));
         // die();
-        var mapping = cff.getGlyphMapping(cff.charstrings, properties);
         // Wrap the CFF data inside an OTF font file
-        data = this.convert(name, cff, properties, mapping);
+        data = this.convert(name, cff, properties);
         break;
 
       case 'OpenType':
@@ -4196,7 +4195,7 @@ var Font = (function FontClosure() {
       return stringToArray(ttf.file);
     },
 
-    convert: function Font_convert(fontName, font, properties, mapping) {
+    convert: function Font_convert(fontName, font, properties) {
       function isFixedPitch(glyphs) {
         for (var i = 0, ii = glyphs.length - 1; i < ii; i++) {
           if (glyphs[i] != glyphs[i + 1])
@@ -4253,6 +4252,9 @@ var Font = (function FontClosure() {
 
       var unitsPerEm = 1 / (properties.fontMatrix || FONT_IDENTITY_MATRIX)[0];
 
+      var mapping = font.getGlyphMapping(font.charstrings, properties);
+      // !!!! THIS IS BAD
+      charstrings = font.charstrings;
       var newMapping = adjustMapping(mapping, this.toUnicode);
       this.toFontChar = zzbuildToFontChar(newMapping);
 
