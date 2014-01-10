@@ -24,6 +24,24 @@
 
 'use strict';
 
+function zzWidths(byGlyphName, properties) {
+
+// Fill in the widths by charcode.
+          var widths = {};
+          for (var glyphName in byGlyphName) {
+            // !!!!!!!!! We're doing this a lot, maybe factor it out.
+            var charCode = properties.differences.indexOf(glyphName);
+            if (charCode >= 0) {
+              widths[charCode] = byGlyphName[glyphName];
+            }
+            charCode = properties.baseEncoding.indexOf(glyphName);
+            if (charCode >= 0) {
+              widths[charCode] = byGlyphName[glyphName];
+            }
+          }
+          return widths;
+
+}
 var PartialEvaluator = (function PartialEvaluatorClosure() {
   function PartialEvaluator(pdfManager, xref, handler, pageIndex,
                             uniquePrefix, idCounters) {
@@ -1132,7 +1150,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         properties.flags |= FontFlags.FixedPitch;
 
       properties.defaultWidth = defaultWidth;
-      properties.widths = glyphsWidths;
+      properties.widths = zzWidths(glyphsWidths, properties);
       properties.defaultVMetrics = defaultVMetrics;
       properties.vmetrics = glyphsVMetrics;
     },
@@ -1235,6 +1253,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
             lastChar: maxCharIndex
           };
           this.extractDataStructures(dict, dict, xref, properties);
+          properties.widths = zzWidths(metrics.widths, properties);
 
           return new Font(baseFontName, null, properties);
         }
@@ -1315,8 +1334,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         properties.cmap = CMapFactory.create(cidEncoding, PDFJS.cMapUrl, null);
         properties.vertical = properties.cmap.vertical;
       }
-      this.extractWidths(dict, xref, descriptor, properties);
       this.extractDataStructures(dict, baseDict, xref, properties);
+      this.extractWidths(dict, xref, descriptor, properties);
 
       if (type.name === 'Type3') {
         properties.coded = true;

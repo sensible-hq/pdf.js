@@ -2248,6 +2248,7 @@ var Font = (function FontClosure() {
 
     this.fontMatrix = properties.fontMatrix;
     if (properties.type == 'Type3') {
+      debugger;
       this.encoding = properties.baseEncoding;
       return;
     }
@@ -2271,8 +2272,8 @@ var Font = (function FontClosure() {
 
 
     this.toFontChar = [];
-debugger;
     if (!file) {
+      debugger;
       // The file data is not specified. Trying to fix the font name
       // to be used with the canvas.font.
       var fontName = name.replace(/[,_]/g, '-');
@@ -2290,7 +2291,7 @@ debugger;
       this.remeasure = Object.keys(this.widths).length > 0;
       var z = [];
       for (var charCode in this.toUnicode) {
-        if (this.toUnicode[charCode].length > 2) {
+        if (this.toUnicode[charCode].length > 1) {
           die();
         }
         z[charCode] = this.toUnicode[charCode].charCodeAt(0);
@@ -3921,10 +3922,6 @@ debugger;
         }
       }
 
-      if (this.loadedName === 'g_font_10_0') {
-    debugger;
-}
-
       var glyphs, ids;
       if (properties.type == 'CIDFontType2') {
         // Replace the old CMAP table with a shiny new one
@@ -4412,7 +4409,7 @@ debugger;
           // e) Map the CID obtained in step (a) according to the CMap obtained
           // in step (d), producing a Unicode value.
           var ucs2 = ucs2CMap.map[cid.charCodeAt(0)];
-          map[charcode] = (ucs2.charCodeAt(0) << 8) + ucs2.charCodeAt(1);
+          map[charcode] = String.fromCharCode((ucs2.charCodeAt(0) << 8) + ucs2.charCodeAt(1));
         }
         return map;
       }
@@ -4595,15 +4592,18 @@ debugger;
       if (typeof unicodeChars === 'number') {
         unicodeChars = String.fromCharCode(unicodeChars);
       }
-      // First try the toFontChar map, if it's not there then try falling back
-      // to the unicodeChars(which may just be the charcode).
-      fontCharCode = this.toFontChar[charcode] || unicodeChars;
 
       switch (this.type) {
         case 'Type3':
           var glyphName = this.differences[charcode] || this.encoding[charcode];
           operatorList = this.charProcOperatorList[glyphName];
           fontCharCode = charcode;
+          break;
+        default:
+          // !!!!!!!!i think unicode chars is a string here!
+          // First try the toFontChar map, if it's not there then try falling back
+          // to the unicodeChars(which may just be the charcode).
+          fontCharCode = this.toFontChar[charcode] || unicodeChars;
           break;
       }
 
@@ -4632,6 +4632,7 @@ debugger;
     },
 
     charsToGlyphs: function Font_charsToGlyphs(chars) {
+      if (chars == 'PCL') { debugger; }
       var charsCache = this.charsCache;
       var glyphs;
 
@@ -4662,7 +4663,7 @@ debugger;
       //     warn('Unsupported CMap: ' + cidEncoding);
       //   }
       // }
-debugger;
+
       if (this.cmap) {
         var i = 0;
         // composite fonts have multi-byte strings convert the string from
