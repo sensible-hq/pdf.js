@@ -2248,7 +2248,6 @@ var Font = (function FontClosure() {
 
     this.fontMatrix = properties.fontMatrix;
     if (properties.type == 'Type3') {
-      debugger;
       this.encoding = properties.baseEncoding;
       return;
     }
@@ -4600,10 +4599,10 @@ var Font = (function FontClosure() {
           fontCharCode = charcode;
           break;
         default:
-          // !!!!!!!!i think unicode chars is a string here!
+          // !!!!!!!!i think unicode chars is a string here! it is trying charcode instead
           // First try the toFontChar map, if it's not there then try falling back
           // to the unicodeChars(which may just be the charcode).
-          fontCharCode = this.toFontChar[charcode] || unicodeChars;
+          fontCharCode = this.toFontChar[charcode] || charcode;
           if (this.missingFile) {
             fontCharCode = mapPrivateUseChars(fontCharCode);
           }
@@ -4635,7 +4634,7 @@ var Font = (function FontClosure() {
     },
 
     charsToGlyphs: function Font_charsToGlyphs(chars) {
-      if (chars == 'PCL') { debugger; }
+      if (chars == '((') { debugger; }
       var charsCache = this.charsCache;
       var glyphs;
 
@@ -5489,24 +5488,41 @@ Type1Font.prototype = {
 
   getGlyphMapping: function Type1Font_getGlyphMapping(charstrings, properties) {
     var glyphs = [];
+    // !!!!!! this is ugly, maybe we should start with char codes and loop
+    // not sure if charcodes for type1 can only be between 0-255 though.
     for (var i = 0, length = charstrings.length; i < length; i++) {
+      var charCodes = [];
       var glyph = charstrings[i];
       var glyphName = glyph.glyphName;
       var charCode = properties.differences.indexOf(glyphName);
-      if (charCode < 0) {
-        charCode = properties.baseEncoding.indexOf(glyphName);
-        if (charCode < 0) {
-          if (glyphName === '.notdef') {
-            charCode = 0;
-            // !!!!!!!!! Perhaps we need to define this in the encodings!!
+      if (charCode >= 0) {
+        charCodes.push(charCode);
+        // Some pdfs have multiple char codes mapped to the same name.
+        charCode = properties.differences.indexOf(glyphName, charCode + 1);
+        if (charCode >= 0) {
+          debugger;
+          charCode = properties.differences.indexOf(glyphName, charCode + 1);
+          if (charCode >= 0) {
+            die('more duplictes found')
           }
-          
-          if (charCode < 0) {
+
+          charCodes.push(charCode);
+        }
+      } else {
+        charCode = properties.baseEncoding.indexOf(glyphName);
+        if (charCode >= 0) {
+          charCodes.push(charCode);
+        } else {
+          if (glyphName === '.notdef') {
+            charCodes.push(0);
+            // !!!!!!!!! Perhaps we need to define this in the encodings!!
+          } else {
             // !!!!!!!!! NOT SURE WE EVEN WANT THIS happens in issue3115
             warn('cant find charcode from glyphname');
             //die('!!!!!!!!!!!!!!!!!! check this');
             charCode = glyphName in GlyphsUnicode ? GlyphsUnicode[glyphName] : -1;
             if (charCode < 0) {
+              charCodes.push(charCode);
               warn('cant find charcode from glyphname even in adobe glyph list');
               continue;
               debugger;
@@ -5516,11 +5532,13 @@ Type1Font.prototype = {
           }
         }
       }
+      for (var j = 0; j < charCodes.length; j++) {
+        glyphs.push({
+          glyphId: i + 1,
+          charCode: charCodes[j]
+        });
+      }
 
-      glyphs.push({
-        glyphId: i + 1,
-        charCode: charCode
-      });
     }
     return glyphs;
   },
