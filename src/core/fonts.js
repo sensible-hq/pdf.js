@@ -2269,7 +2269,6 @@ var Font = (function FontClosure() {
     // else
     //   this.rebuildToUnicode(properties);
 
-
     this.toFontChar = [];
     if (!file) {
       this.missingFile = true;
@@ -5764,6 +5763,10 @@ var CFFFont = (function CFFFontClosure() {
               glyphId: glyphId,
               charCode: charCode
             });
+            charCode = this.properties.differences.indexOf(glyphName, charCodes + 1);
+            if (charCode >= 0) {
+              die('found a duplicate in differences');
+            }
             continue;
           }
         }
@@ -5780,15 +5783,12 @@ var CFFFont = (function CFFFontClosure() {
         for (var charCode in encoding) {
           // When the CFF encoding is parsed we already map glyph name to glyphId.
           if (encoding[charCode] == glyphId) {
-            var found = true;
-            break
+            mapping.push({
+              glyphId: glyphId,
+              charCode: charCode
+            });
+            // Glyphs can be multiply encoded so we can not break here.
           }
-        }
-        if (found) {
-          mapping.push({
-            glyphId: glyphId,
-            charCode: charCode
-          });
         }
       }
       this.charstrings = mapping.slice(); // Needed?
