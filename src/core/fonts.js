@@ -5763,7 +5763,7 @@ var CFFFont = (function CFFFontClosure() {
               glyphId: glyphId,
               charCode: charCode
             });
-            charCode = this.properties.differences.indexOf(glyphName, charCodes + 1);
+            charCode = this.properties.differences.indexOf(glyphName, charCode + 1);
             if (charCode >= 0) {
               die('found a duplicate in differences');
             }
