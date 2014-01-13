@@ -358,6 +358,7 @@ var CMap = (function CMapClosure() {
     // [[1BytePairs], [2BytePairs], [3BytePairs], [4BytePairs]]
     // where nBytePairs are ranges e.g. [low1, high1, low2, high2, ...]
     this.codespaceRanges = [[], [], [], []];
+    this.numCodespaceRanges = 0;
     this.map = [];
     this.vertical = false;
     this.useCMap = null;
@@ -365,6 +366,7 @@ var CMap = (function CMapClosure() {
   CMap.prototype = {
     addCodespaceRange: function(n, low, high) {
       this.codespaceRanges[n - 1].push(low, high);
+      this.numCodespaceRanges++;
     },
 
     mapRange: function(low, high, dstLow) {
@@ -616,14 +618,28 @@ var CMapFactory = (function CMapFactoryClosure() {
     }
 
     if (!useCMap && embededUseCMap) {
-      // Load the usecmap definintion from the file only if there wasn't one
+      // Load the usecmap definition from the file only if there wasn't one
       // specified.
       useCMap = embededUseCMap;
     }
     if (useCMap) {
       cmap.useCMap = createBuiltInCMap(useCMap, builtInCMapUrl);
-      if (cmap.codespaceRanges.length === 0) {
-        cmap.codespaceRanges = cmap.useCMap.codespaceRanges;
+      // If there aren't any code space ranges defined clone all the parent ones
+      // into this cMap.
+      if (cmap.numCodespaceRanges === 0) {
+        var useCodespaceRanges = cmap.useCMap.codespaceRanges;
+        for (var i = 0; i < useCodespaceRanges.length; i++) {
+          cmap.codespaceRanges[i] = useCodespaceRanges[i].slice();
+        }
+        cmap.numCodespaceRanges = cmap.useCMap.numCodespaceRanges;
+      }
+      // Merge the map into the current one, making sure not to override
+      // any previously defined entries.
+      for (var key in cmap.useCMap.map) {
+        if (key in cmap.map) {
+          continue;
+        }
+        cmap.map[key] = cmap.useCMap.map[key];
       }
     }
   }

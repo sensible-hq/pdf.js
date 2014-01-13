@@ -4350,7 +4350,6 @@ var Font = (function FontClosure() {
 
     buildToUnicode: function Font_buildToUnicode(properties) {
       // Section 9.10.2 Mapping Character Codes to Unicode Values
-      debugger;
       if (properties.toUnicode) {
         return properties.toUnicode;
       }
@@ -4593,9 +4592,14 @@ var Font = (function FontClosure() {
     charToGlyph: function Font_charToGlyph(charcode) {
       var fontCharCode, width, operatorList, disabled;
 
-      var width = this.widths[charcode];
+      var widthCode = charcode;
+      // !!!!!! should figure out if we always want to define a cMap!
+      if (this.cmap && charcode in this.cmap.map) {
+        widthCode = this.cmap.map[charcode].charCodeAt(0);
+      }
+      var width = this.widths[widthCode];
       width = isNum(width) ? width : this.defaultWidth;
-      var vmetric = this.vmetrics && this.vmetrics[charcode];
+      var vmetric = this.vmetrics && this.vmetrics[widthCode];
 
       var unicodeChars = !('toUnicode' in this) ? charcode :
         this.toUnicode[charcode] || charcode;
