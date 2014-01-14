@@ -5504,52 +5504,52 @@ Type1Font.prototype = {
   },
 
   getGlyphMapping: function Type1Font_getGlyphMapping(charstrings, properties) {
-    var glyphs = [];
-    // !!!!!! this is ugly, maybe we should start with char codes and loop
-    // not sure if charcodes for type1 can only be between 0-255 though.
-    for (var i = 0, length = charstrings.length; i < length; i++) {
-      var charCodes = [];
-      var glyph = charstrings[i];
-      var glyphName = glyph.glyphName;
-      var charCode = properties.differences.indexOf(glyphName);
-      if (charCode >= 0) {
-        while (charCodes >= 0) {
-          charCodes.push(charCode);
-          // Some pdfs have multiple char codes mapped to the same name.
-          charCode = properties.differences.indexOf(glyphName, charCode + 1);
-        }
-      } else {
-        charCode = properties.baseEncoding.indexOf(glyphName);
-        if (charCode >= 0) {
-          charCodes.push(charCode);
-        } else {
-          if (glyphName === '.notdef') {
-            charCodes.push(0);
-            // !!!!!!!!! Perhaps we need to define this in the encodings!!
-          } else {
-            // !!!!!!!!! NOT SURE WE EVEN WANT THIS happens in issue3115
-            warn('cant find charcode from glyphname');
-            //die('!!!!!!!!!!!!!!!!!! check this');
-            charCode = glyphName in GlyphsUnicode ? GlyphsUnicode[glyphName] : -1;
-            if (charCode < 0) {
-              charCodes.push(charCode);
-              warn('cant find charcode from glyphname even in adobe glyph list');
-              continue;
-              debugger;
-              // NOT SURE HOW TO HANDLE THIS
-              die('!!!!!!!!!!!!!!!!!!');
-            }
-          }
+
+    function getGlyphId(glyphName) {
+      for (var i = 0, length = charstrings.length; i < length; i++) {
+        if (glyphName === charstrings[i].glyphName) {
+          return i + 1; // We add a notdef glyph, which may or may not be needed
         }
       }
-      for (var j = 0; j < charCodes.length; j++) {
-        glyphs.push({
-          glyphId: i + 1,
-          charCode: charCodes[j]
-        });
+      return -1;
+    }
+
+    var glyphs = [];
+    for (var charCode = 0; charCode < 255; charCode++) {
+      // The differences array is the highest priority, check there first.
+      if (charCode in properties.differences) {
+        var glyphName = properties.differences[charCode];
+        var glyphId = getGlyphId(glyphName);
+        if (glyphId >= 0) {
+          glyphs.push({
+            glyphId: glyphId,
+            charCode: charCode
+          });
+          continue;
+        }
       }
 
+      // Try the base encoding next. This is either the encoding from the font
+      // dictionary or the encoding embedded in the font.
+      if (charCode in properties.baseEncoding && properties.baseEncoding[charCode] !== '') {
+        var glyphName = properties.baseEncoding[charCode];
+        var glyphId = getGlyphId(glyphName);
+        if (glyphId >= 0) {
+          glyphs.push({
+            glyphId: glyphId,
+            charCode: charCode
+          });
+          continue;
+        }
+      }
+
+      // The char code wasn't found so we'll map it to notdef.
+      glyphs.push({
+        glyphId: 0,
+        charCode: charCode
+      });
     }
+
     return glyphs;
   },
 
