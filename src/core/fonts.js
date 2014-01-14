@@ -5631,11 +5631,15 @@ Type1Font.prototype = {
     var count = glyphs.length;
     var charsetArray = [0];
     for (var i = 0; i < count; i++) {
-      var index = CFFStandardStrings.indexOf(charstrings[i].glyph);
+      var index = CFFStandardStrings.indexOf(charstrings[i].glyphName);
       // Some characters like asterikmath && circlecopyrt are
       // missing from the original strings, for the moment let's
       // map them to .notdef and see later if it cause any
       // problems
+      // !!!!!!!!!!!! This does matter i noticed this in issue818 when I was
+      // mapping them all to notdef the adieresis glyph no longer worked
+      // we should insert the strings and map them correctly if they are a
+      // unicode name.
       if (index == -1)
         index = 0;
 
