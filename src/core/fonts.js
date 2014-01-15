@@ -4018,12 +4018,15 @@ var Font = (function FontClosure() {
 
         if (!this.isSymbolicFont && this.hasEncoding) {
           // !!!!!!! stricter check on MacRomanEncoding or WinAnsiEncoding
-          // The base encoding already has been initialized and updated with the
-          // differences array at this point. Now fill any empty spots with the
-          // StandardEncoding.
+          // !!!!!!!! double check that the base encoding is intialized to the right
+          // value, it looks like for true type it uses winansi, but should be standard!
+
           for (var charCode = 0; charCode < 255; charCode++) {
+            if (charCode === 248) debugger;
             var glyphName;
-            if (charCode in properties.baseEncoding && properties.baseEncoding !== '') {
+            if (this.differences && charCode in this.differences) {
+              glyphName = this.differences[charCode];
+            } else if (charCode in properties.baseEncoding && properties.baseEncoding !== '') {
               glyphName = properties.baseEncoding[charCode];
             } else {
               glyphName = Encodings.StandardEncoding[charCode];
@@ -4649,7 +4652,6 @@ var Font = (function FontClosure() {
     },
 
     charsToGlyphs: function Font_charsToGlyphs(chars) {
-      if (chars == '((') { debugger; }
       var charsCache = this.charsCache;
       var glyphs;
 
