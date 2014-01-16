@@ -3958,6 +3958,9 @@ var Font = (function FontClosure() {
             glyphs.push({ charCode: charCode, glyphId:  glyphId});
           }
         }
+        if (glyphs.length && dupFirstEntry) {
+          glyphs[glyphs.length - 1].charCode = 0;
+        }
       } else {
         // Most of the following logic in this code branch is based on the
         // 9.6.6.4 of the PDF spec.
