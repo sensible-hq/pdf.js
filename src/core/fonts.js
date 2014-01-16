@@ -3922,13 +3922,6 @@ var Font = (function FontClosure() {
       var glyphs, ids;
       if (properties.type == 'CIDFontType2') {
         // Replace the old CMAP table with a shiny new one
-        // Type2 composite fonts map characters directly to glyphs so the cmap
-        // table must be replaced.
-        // canvas fillText will reencode some characters even if the font has a
-        // glyph at that position - e.g. newline is converted to a space and
-        // U+00AD (soft hyphen) is not drawn.
-        // So, offset all the glyphs by 0xFF to avoid these cases and use
-        // the encoding to map incoming characters to the new glyph positions
         if (!tables.cmap) {
           tables.cmap = {
             tag: 'cmap',
@@ -3936,57 +3929,35 @@ var Font = (function FontClosure() {
           };
         }
 
-        var cidToGidMap = properties.cidToGidMap || [];
-        var gidToCidMap = [0];
-        if (cidToGidMap.length > 0) {
-          for (var j = cidToGidMap.length - 1; j >= 0; j--) {
-            var gid = cidToGidMap[j];
-            if (gid)
-              gidToCidMap[gid] = j;
-          }
-          // filling the gaps using CID above the CIDs currently used in font
-          var nextCid = cidToGidMap.length;
-          for (var i = 1; i < numGlyphs; i++) {
-            if (!gidToCidMap[i])
-              gidToCidMap[i] = nextCid++;
-          }
-        } else {
-          for (var i = 1; i < numGlyphs; i++) {
-            gidToCidMap[i] = i;
-          }
-          if (dupFirstEntry) {
-            gidToCidMap[numGlyphs - 1] = 0;
-          }
-        }
-
         glyphs = [];
-        for (var i = 1; i < numGlyphs; i++) {
-          var cid = gidToCidMap[i];
-
-          glyphs.push({ charCode: cid, glyphId: i });
+        var cidToGidMap = properties.cidToGidMap || [];
+        var cMap = properties.cmap.map;
+        /*
+        // This code tries to go backwards from glyph ids, but it is super slow!
+        for (var glyphId = 0; glyphId < numGlyphs; glyphId++) {
+          var cid = cidToGidMap.indexOf(glyphId);
+          if (cid >= 0) {
+            var charCode = cMap.indexOf(String.fromCharCode(cid));
+            if (charCode >= 0) {
+              glyphs.push({ charCode: charCode, glyphId:  glyphId});
+            }
+          }
         }
-
-        // unassigned codepoints will never be used for non-Identity CMap
-        // because the input will be Unicode
-        // if (!this.cidToFontChar) {
-        //   die()
-        //   // trying to fit as many unassigned symbols as we can
-        //   // in the range allocated for the user defined symbols
-        //   var unusedUnicode = CMAP_GLYPH_OFFSET;
-        //   for (var j = 0, jj = unassignedUnicodeItems.length; j < jj; j++) {
-        //     var i = unassignedUnicodeItems[j];
-        //     var cid = gidToCidMap[i];
-        //     while (unusedUnicode in usedUnicodes)
-        //       unusedUnicode++;
-        //     if (unusedUnicode >= CMAP_GLYPH_OFFSET + GLYPH_AREA_SIZE)
-        //       break;
-        //     var unicode = unusedUnicode++;
-        //     this.toFontChar[cid] = unicode;
-        //     usedUnicodes[unicode] = true;
-        //     glyphs.push({ unicode: unicode, code: cid });
-        //     ids.push(i);
-        //   }
-        // }
+        */
+        for (var charCode in cMap) {
+          charCode |= 0;
+          assert(cMap[charCode].length === 1, '!!!!! CAN THIS HAPPPEN?');
+          var cid = cMap[charCode].charCodeAt(0);
+          var glyphId = -1;
+          if (cidToGidMap.length === 0) {
+            glyphId = charCode;
+          } else if (cid in cidToGidMap) {
+            glyphId = cidToGidMap[cid];
+          }
+          if (glyphId >= 0 && glyphId < numGlyphs) {
+            glyphs.push({ charCode: charCode, glyphId:  glyphId});
+          }
+        }
       } else {
         // Most of the following logic in this code branch is based on the
         // 9.6.6.4 of the PDF spec.
