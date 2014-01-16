@@ -5713,7 +5713,8 @@ var CFFFont = (function CFFFontClosure() {
           // If the font is actually a CID font then we should use the charset
           // to map CIDs to GIDs.
           for (var glyphId = 0; glyphId < charsets.length; glyphId++) {
-            var charCode = charsets[glyphId];
+            var cid = charsets[glyphId];
+            var charCode = this.properties.cmap.map.indexOf(String.fromCharCode(cid));
             if (charCode === '.notdef') {
               // !!!!!!!!! why is there a notdef inserted here it should be a number
               charCode = 0;
