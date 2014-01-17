@@ -5708,7 +5708,7 @@ var CFFFont = (function CFFFontClosure() {
       //   die('TODO!');
       // }
 
-      if (this.properties.subtype === 'CIDFontType0C') {
+      if (this.properties.composite) {
         if (this.cff.isCIDFont) {
           // If the font is actually a CID font then we should use the charset
           // to map CIDs to GIDs.
