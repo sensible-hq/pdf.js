@@ -2473,12 +2473,19 @@ var Font = (function FontClosure() {
 
   function adjustMapping(mapping, toUnicode) {
     var newMap = [];
+    var usedCharCodes = [];
     var usedFontCharCodes = [];
     var nextAvailableFontCharCode = CMAP_GLYPH_OFFSET;
     for (var i = 0; i < mapping.length; i++) {
       // !!!!!!!!!! TODO make sure there are no duplicates!
       var map = mapping[i];
       var originalCharCode = map.charCode;
+      if (originalCharCode in usedCharCodes) {
+        // !!!!!! The value has already been mapped, we should probably handle
+        // that before this point.
+        continue;
+      }
+      usedCharCodes[originalCharCode] = true;
       var fontCharCode = originalCharCode;
       // First try to map the value to a unicode position.
       if (originalCharCode in toUnicode) {
@@ -3919,16 +3926,8 @@ var Font = (function FontClosure() {
         }
       }
 
-      var glyphs, ids;
+      var glyphs = [], ids;
       if (properties.type == 'CIDFontType2') {
-        // Replace the old CMAP table with a shiny new one
-        if (!tables.cmap) {
-          tables.cmap = {
-            tag: 'cmap',
-            data: null
-          };
-        }
-
         glyphs = [];
         var cidToGidMap = properties.cidToGidMap || [];
         var cMap = properties.cmap.map;
@@ -3959,6 +3958,13 @@ var Font = (function FontClosure() {
           }
         }
         if (glyphs.length && dupFirstEntry) {
+          // The charCode may already be mapped from above so remove it.
+          for (var i = 0; i < glyphs.length; i++) {
+            if (glyphs[i].charCode === 0) {
+              glyphs.splice(i, 1);
+              break;
+            }
+          }
           glyphs[glyphs.length - 1].charCode = 0;
         }
       } else {
@@ -3977,7 +3983,6 @@ var Font = (function FontClosure() {
         var cmapEncodingId = cmapTable.encodingId;
         var cmapMappings = cmapTable.mappings;
         var cmapMappingsLength = cmapMappings.length;
-        var glyphs = [];
 
         // TODO(mack): If the (3, 0) cmap table used, then the font is
         // symbolic. The range of charcodes in the cmap table should be
@@ -4089,7 +4094,10 @@ var Font = (function FontClosure() {
       var newMapping = adjustMapping(glyphs, this.toUnicode);
       this.toFontChar = zzbuildToFontChar(newMapping);
       // !!!!!!!!!! why was this passing ids
-      tables.cmap.data = createCmapTable(newMapping);
+      tables.cmap = {
+        tag: 'cmap',
+        data: createCmapTable(newMapping)
+      };
       // var unicodeIsEnabled = [];
       // for (var i = 0, ii = glyphs.length; i < ii; i++) {
       //   unicodeIsEnabled[glyphs[i].unicode] = true;
@@ -5766,6 +5774,7 @@ var CFFFont = (function CFFFontClosure() {
           }
         }
         for (var charCode in encoding) {
+          charCode |= 0;
           // When the CFF encoding is parsed we already map glyph name to glyphId.
           if (encoding[charCode] == glyphId) {
             mapping.push({
