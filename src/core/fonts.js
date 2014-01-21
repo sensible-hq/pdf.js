@@ -2492,7 +2492,10 @@ var Font = (function FontClosure() {
         }
       }
       if (fontCharCode in usedFontCharCodes ||
-          fontCharCode <= 0x1f || fontCharCode === 0x7F || (fontCharCode >= 0x80 && fontCharCode <= 0x9F)) {
+          fontCharCode <= 0x1f ||
+          fontCharCode === 0x7F ||
+          fontCharCode === 0xAD || // Soft Hyphen - will not show up on canvas.
+          (fontCharCode >= 0x80 && fontCharCode <= 0x9F)) {
         // Remap control characters or already used values.
         fontCharCode = nextAvailableFontCharCode++;
         if (fontCharCode in usedFontCharCodes) {
