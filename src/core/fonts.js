@@ -5684,7 +5684,6 @@ var CFFFont = (function CFFFontClosure() {
     getGlyphMapping: function CFFFont_getGlyphMapping() {
       var cff = this.cff;
       var charsets = cff.charset.charset;
-      var encoding = cff.encoding ? cff.encoding.encoding : null;
       var charCodeToGlyphId = Object.create(null);
 
       if (this.properties.composite) {
@@ -5710,37 +5709,36 @@ var CFFFont = (function CFFFontClosure() {
         return charCodeToGlyphId;
       }
 
-      for (var glyphId = 0; glyphId < charsets.length; glyphId++) {
-        var glyphName = charsets[glyphId];
-        if (this.properties.differences && this.properties.differences.length) {
-          var charCode = this.properties.differences.indexOf(glyphName);
-          if (charCode >= 0) {
-            if (charCode in charCodeToGlyphId) {
-              continue;
-            }
-            charCodeToGlyphId[charCode] = glyphId;
-            continue;
-          }
-        }
-        if (this.properties.hasEncoding) {
-          var charCode = this.properties.baseEncoding.indexOf(glyphName);
-          if (charCode >= 0) {
-            if (charCode in charCodeToGlyphId) {
-              continue;
-            }
-            charCodeToGlyphId[charCode] = glyphId;
-            continue;
-          }
+      if (!!(this.properties.flags & FontFlags.Symbolic)) {
+        // For a symbolic font the encoding should be the fonts built-in
+        // encoding.
+        var encoding = cff.encoding ? cff.encoding.encoding : null;
+        if (encoding === null) {
+          die('this shouldnt happen');
         }
         for (var charCode in encoding) {
-          charCode |= 0;
-          // When the CFF encoding is parsed we already map glyph name to glyphId.
-          if (encoding[charCode] == glyphId) {
-            if (charCode in charCodeToGlyphId) {
-              continue;
-            }
+          charCodeToGlyphId[charCode] = encoding[charCode];
+        }
+      } else {
+        // For non-symbolic fonts the name should be a predefined encoding
+        var baseEncoding = this.properties.baseEncoding;
+        for (var charCode = 0; charCode < baseEncoding.length; charCode++) {
+          var glyphName = baseEncoding[charCode];
+          var glyphId = charsets.indexOf(glyphName);
+          if (glyphId >= 0) {
             charCodeToGlyphId[charCode] = glyphId;
-            // Glyphs can be multiply encoded so we can not break here.
+          }
+        }
+      }
+
+      // Lastly, merge in the differences.
+      if (this.properties.differences) {
+        var differences = this.properties.differences;
+        for (var charCode in differences) {
+          var glyphName = differences[charCode];
+          var glyphId = charsets.indexOf(glyphName);
+          if (glyphId >= 0) {
+            charCodeToGlyphId[charCode] = glyphId;
           }
         }
       }
