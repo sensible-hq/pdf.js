@@ -25,7 +25,13 @@
 'use strict';
 
 function zzWidths(byGlyphName, properties) {
-
+debugger;
+            // !!!!!!!!!! todo this is bad we should look up the encoding actually
+            // in the font file.
+            var encoding = properties.type === 'TrueType' ?
+                    Encodings.WinAnsiEncoding :
+                    Encodings.StandardEncoding;
+            encoding = encoding.slice();
 // Fill in the widths by charcode.
           var widths = {};
           for (var glyphName in byGlyphName) {
@@ -34,7 +40,7 @@ function zzWidths(byGlyphName, properties) {
             if (charCode >= 0) {
               widths[charCode] = byGlyphName[glyphName];
             }
-            charCode = properties.baseEncoding.indexOf(glyphName);
+            charCode = encoding.indexOf(glyphName);
             if (charCode >= 0) {
               widths[charCode] = byGlyphName[glyphName];
             }
@@ -960,40 +966,19 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       }
 
       // Based on 9.6.6 of the spec the encoding can come from multiple places
-      // but should be prioritized in the following order:
-      // 1. Encoding dictionary
-      // 2. Encoding within font file (Type1 or Type1C)
-      // 3. Default (depends on font type)
-      // Differences applied to the above.
-      // Note: we don't fill in the encoding from the font file(2) here but use
-      // the flag overridableEncoding to signal that the font can override the
-      // encoding if it has one built in.
-      var overridableEncoding = true;
-      var hasEncoding = false;
-      var flags = properties.flags;
+      // and depends on the font type. The base encoding and differences are
+      // read here, but the encoding that is actually used is chosen during
+      // glyph mapping in the font.
       var differences = [];
-      var baseEncoding = properties.type === 'TrueType' ?
-                          Encodings.WinAnsiEncoding :
-                          Encodings.StandardEncoding;
-      // The Symbolic attribute can be misused for regular fonts
-      // Heuristic: we have to check if the font is a standard one also
-      if (!!(flags & FontFlags.Symbolic)) {
-        baseEncoding = !properties.file ? Encodings.symbolsEncoding :
-                                          Encodings.MacRomanEncoding;
-      }
+      debugger;
+      var baseEncodingName = null;
       if (dict.has('Encoding')) {
         var encoding = dict.get('Encoding');
         if (isDict(encoding)) {
-          var baseName = encoding.get('BaseEncoding');
-          if (baseName) {
-            overridableEncoding = false;
-            hasEncoding = true;
-            baseEncoding = Encodings[baseName.name];
-          }
-
+          baseEncodingName = encoding.get('BaseEncoding');
+          baseEncodingName = isName(baseEncodingName) ? baseEncodingName.name : null;
           // Load the differences between the base and original
           if (encoding.has('Differences')) {
-            hasEncoding = true;
             var diffEncoding = encoding.get('Differences');
             var index = 0;
             for (var j = 0, jj = diffEncoding.length; j < jj; j++) {
@@ -1005,18 +990,21 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
             }
           }
         } else if (isName(encoding)) {
-          overridableEncoding = false;
-          hasEncoding = true;
-          baseEncoding = Encodings[encoding.name];
+          baseEncodingName = encoding.name;
         } else {
           error('Encoding is not a Name nor a Dict');
+        }
+        // According to table 114 if the encoding is a named encoding it must be
+        // one of these predefined encodings.
+        if ((baseEncodingName !== 'MacRomanEncoding' &&
+             baseEncodingName !== 'MacExpertEncoding' &&
+             baseEncodingName !== 'WinAnsiEncoding')) {
+          baseEncodingName = null;
         }
       }
 
       properties.differences = differences;
-      properties.baseEncoding = baseEncoding;
-      properties.hasEncoding = hasEncoding;
-      properties.overridableEncoding = overridableEncoding;
+      properties.baseEncodingName = baseEncodingName;
       properties.dict = dict;
     },
 

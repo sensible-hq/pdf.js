@@ -2146,68 +2146,6 @@ function adjustWidths(properties) {
   properties.defaultWidth *= scale;
 }
 
-function simpleFontEncoding(font, dict) {
-  var etable = [];
-  var estrings = [];
-  // Load the encoding from the font.
-  var cmap = font.getCharMap() || 0;
-
-  // Load the PDF encoding entry.
-  var encoding = dict.get('Encoding');
-  if (encoding) {
-    if (isName(encoding)) {
-      estrings = Encodings[encoding.name].slice();
-    } else if (isDict(encoding)) {
-      var base = encoding.get('BaseEncoding');
-      if (isName(base)) {
-        estrings = Encodings[base.name].slice();
-      }
-      // Load the differences between the base and original
-      if (encoding.has('Differences')) {
-        var diffEncoding = encoding.get('Differences');
-        var index = 0;
-        for (var j = 0, jj = diffEncoding.length; j < jj; j++) {
-          var data = diffEncoding[j];
-          if (isNum(data))
-            index = data;
-          else
-            estrings[index++] = data.name;
-        }
-      }
-    }
-  }
-  
-  for (var i = 0; i < 256; i++) {
-    etable[i] = cmap[i] || 0;
-  }
-
-  // !!! TODO WE MAY NEED TO LOOK AT SUBTYPE
-
-
-  // Try to encode by glyph name first.
-  if (true /* kind === TYPE1 */) {
-    for (var i = 0; i < 256; i++) {
-      if (estrings[i]) {
-        etable[i] = font.getGlyphIndex(estrings[i]);
-        if (etable[i] === 0) {
-          // Try adobe glyph list....
-          // do some duplicate checking
-        }
-      }
-    }
-  } else if (false /* is true type */) {
-
-  }
-
-  for (var i = 0; i < 256; i++) {
-    if (etable[i] && !estrings[i]) {
-      die('todo');
-    }
-  }
-
-  return etable;
-}
-
 /**
  * 'Font' is the class the outside world should use, it encapsulate all the font
  * decoding logics whatever type it is (assuming the font type is supported).
@@ -2243,12 +2181,20 @@ var Font = (function FontClosure() {
     this.defaultWidth = properties.defaultWidth;
     this.composite = properties.composite;
     this.wideChars = properties.wideChars;
-    this.hasEncoding = properties.hasEncoding;
     this.cmap = properties.cmap;
 
     this.fontMatrix = properties.fontMatrix;
     if (properties.type == 'Type3') {
-      this.encoding = properties.baseEncoding;
+      if (properties.baseEncodingName) {
+        this.encoding = Encodings[properties.baseEncodingName].slice();
+      } else {
+        this.encoding = Encodings.StandardEncoding.slice();
+      }
+      if (properties.differences && properties.differences.length) {
+        for (var charCode in properties.differences) {
+          this.encoding[charCode] = properties.differences[charCode];
+        }
+      }
       return;
     }
 
@@ -3013,7 +2959,7 @@ var Font = (function FontClosure() {
        * Read the appropriate subtable from the cmap according to 9.6.6.4 from
        * PDF spec
        */
-      function readCmapTable(cmap, font, hasEncoding, isSymbolicFont) {
+      function readCmapTable(cmap, font, isSymbolicFont) {
         var start = (font.start ? font.start : 0) + cmap.offset;
         font.pos = start;
 
@@ -3021,73 +2967,36 @@ var Font = (function FontClosure() {
         var numTables = int16(font.getBytes(2));
 
         var potentialTable;
-        var foundPreferredTable;
-        // There's an order of preference in terms of which cmap subtable we
-        // want to use. So scan through them to find our preferred table.
+        var canBreak = false;
+        // There's an order of preference in terms of which cmap subtable to
+        // use:
+        // - non-symbolic fonts the preference is a 3,1 table then a 1,0 table
+        // - symbolic fonts the preference is a 3,0 table then a 1,0 table
+        // Note: The table are sorted in ascending order which allows this code
+        // to work.
         for (var i = 0; i < numTables; i++) {
           var platformId = int16(font.getBytes(2));
           var encodingId = int16(font.getBytes(2));
           var offset = int32(font.getBytes(4));
           var useTable = false;
-          var canBreak = false;
 
-          // The following block implements the following from the spec:
-          //
-          //   When the font has no Encoding entry, or the font descriptor’s
-          //   Symbolic flag is set (in which case the Encoding entry
-          //   is ignored), this shall occur:
-          //      - If the font contains a (3, 0) subtable, the range of
-          //      - Otherwise, the (1, 0) subtable will be used.
-          //   Otherwise, if the font does have an encoding:
-          //      - Use the (3, 1) cmap subtable
-          //      - Otherwise, use the (1, 0) subtable if present
-          //
-          // The following diverges slightly from the above spec in order
-          // to handle the case that hasEncoding and isSymbolicFont are both
-          // true. In this, based on the ordering of the rules in the spec,
-          // my interpretation is that we should be acting as if the font is
-          // symbolic.
-          //
-          // However, in this case, the test pdf 'preistabelle.pdf'
-          // is interpreting this case as a non-symbolic font. In this case
-          // though, 'presitabelle.pdf' does contain a (3, 1) table and does
-          // not contain a (3, 0) table which indicates it is non-symbolic.
-          //
-          // Thus, I am using this heurisitic of looking at which table is
-          // found to truly determine whether or not the font is symbolic.
-          // That is, if the specific symbolic/non-symbolic font specific
-          // tables (3, 0) or (3, 1) is found, that information is used for
-          // deciding if the font is symbolic or not.
-          //
-          // TODO(mack): This section needs some more thought on whether the
-          // heuristic is good enough. For now, it passes all the regression
-          // tests.
-          if (isSymbolicFont && platformId === 3 && encodingId === 0) {
+          if (platformId == 1 && encodingId === 0) {
+            useTable = true;
+            // Continue the loop since there still may be a higher priority
+            // table.
+          } else if (!isSymbolicFont && platformId === 3 && encodingId === 1) {
             useTable = true;
             canBreak = true;
-            foundPreferredTable = true;
-          } else if (hasEncoding && platformId === 3 && encodingId === 1) {
+          } else if (isSymbolicFont && platformId === 3 && encodingId === 0) {
             useTable = true;
             canBreak = true;
-            foundPreferredTable = true;
-            // Update the isSymbolicFont based on this heuristic
-            isSymbolicFont = false;
-          } else if (platformId === 1 && encodingId === 0 &&
-              !foundPreferredTable) {
-            useTable = true;
-            foundPreferredTable = true;
-          } else if (!potentialTable) {
-            // We will use an arbitrary table if we cannot find a preferred
-            // table
-            useTable = true;
           }
 
           if (useTable) {
             potentialTable = {
               platformId: platformId,
               encodingId: encodingId,
-              offset: offset,
-              isSymbolicFont: isSymbolicFont
+              offset: offset
             };
           }
           if (canBreak) {
@@ -3096,16 +3005,8 @@ var Font = (function FontClosure() {
         }
 
         if (!potentialTable) {
-          error('Could not find a cmap table');
-          return;
-        }
-
-        if (!foundPreferredTable) {
-          warn('Did not find a cmap of suitable format. Interpreting (' +
-               potentialTable.platformId + ', ' + potentialTable.encodingId +
-               ') as (3, 1) table');
-          potentialTable.platformId = 3;
-          potentialTable.encodingId = 1;
+          warn('Could not find a preferred cmap table.');
+          return [];
         }
 
         font.pos = start + potentialTable.offset;
@@ -3216,7 +3117,6 @@ var Font = (function FontClosure() {
         return {
           platformId: potentialTable.platformId,
           encodingId: potentialTable.encodingId,
-          isSymbolicFont: potentialTable.isSymbolicFont,
           mappings: mappings,
           hasShortCmap: hasShortCmap
         };
@@ -3954,58 +3854,42 @@ var Font = (function FontClosure() {
       } else {
         // Most of the following logic in this code branch is based on the
         // 9.6.6.4 of the PDF spec.
-
-        // TODO(mack):
-        // We are using this.hasEncoding to mean that the encoding is either
-        // MacRomanEncoding or WinAnsiEncoding (following spec in 9.6.6.4),
-        // but this.hasEncoding is currently true for any encodings on the
-        // Encodings object (e.g. MacExpertEncoding). So should consider using
-        // better check for this.
-        var cmapTable = readCmapTable(tables.cmap, font, this.hasEncoding,
-            this.isSymbolicFont);
+        var cmapTable = readCmapTable(tables.cmap, font, this.isSymbolicFont);
         var cmapPlatformId = cmapTable.platformId;
         var cmapEncodingId = cmapTable.encodingId;
         var cmapMappings = cmapTable.mappings;
         var cmapMappingsLength = cmapMappings.length;
+        var hasEncoding = properties.differences.length || !!properties.baseEncodingName;
 
-        // TODO(mack): If the (3, 0) cmap table used, then the font is
-        // symbolic. The range of charcodes in the cmap table should be
-        // one of the following:
-        //   -> 0x0000 - 0x00FF
-        //   -> 0xF000 - 0xF0FF
-        //   -> 0xF100 - 0xF1FF
-        //   -> 0xF200 - 0xF2FF
-        // If it is not, we should change not consider this a symbolic font
-        this.isSymbolicFont = cmapTable.isSymbolicFont;
-
-
-        if (!this.isSymbolicFont && this.hasEncoding) {
-          // !!!!!!! stricter check on MacRomanEncoding or WinAnsiEncoding
-          // !!!!!!!! double check that the base encoding is intialized to the right
-          // value, it looks like for true type it uses winansi, but should be standard!
-
+        // The spec seems to imply that if the font is symbolic the encoding
+        // should be ignored, this doesn't appear to work for 'preistabelle.pdf'
+        // where the the font is symbolic and it has an encoding.
+        if (hasEncoding &&
+            (cmapPlatformId === 3 && cmapEncodingId === 1 ||
+             cmapPlatformId === 1 && cmapEncodingId === 0)) {
+          var baseEncoding = [];
+          if (properties.baseEncodingName === 'MacRomanEncoding' ||
+              properties.baseEncodingName === 'WinAnsiEncoding') {
+            baseEncoding = Encodings[properties.baseEncodingName];
+          }
           for (var charCode = 0; charCode < 255; charCode++) {
             var glyphName;
             if (this.differences && charCode in this.differences) {
               glyphName = this.differences[charCode];
-            } else if (charCode in properties.baseEncoding && properties.baseEncoding !== '') {
-              glyphName = properties.baseEncoding[charCode];
+            } else if (charCode in baseEncoding && baseEncoding[charCode] !== '') {
+              glyphName = baseEncoding[charCode];
             } else {
               glyphName = Encodings.StandardEncoding[charCode];
             }
             if (!glyphName) {
               continue;
             }
-
             var unicodeOrCharCode;
             if (cmapPlatformId === 3 && cmapEncodingId === 1) {
               unicodeOrCharCode = GlyphsUnicode[glyphName];
             } else if (cmapPlatformId === 1 && cmapEncodingId === 0) {
               // !!!!!!!! todo update mac roman with mac os table
-              debugger;
               unicodeOrCharCode = Encodings.MacRomanEncoding.indexOf(glyphName);
-            } else {
-              die('todo alternative cmap encoding');
             }
 
             for (var i = 0; i < cmapMappingsLength; ++i) {
@@ -4017,29 +3901,26 @@ var Font = (function FontClosure() {
             }
           }
         } else {
-          if (cmapPlatformId === 3 && cmapEncodingId === 0 ||
-              cmapPlatformId === 1 && cmapEncodingId === 0) {
-            // For (3, 0) cmap tables:
-            // The charcode key being stored in toFontChar is the lower byte
-            // of the two-byte charcodes of the cmap table since according to
-            // the spec: 'each byte from the string shall be prepended with the
-            // high byte of the range [of charcodes in the cmap table], to form
-            // a two-byte character, which shall be used to select the
-            // associated glyph description from the subtable'.
-            //
-            // For (1, 0) cmap tables:
-            // 'single bytes from the string shall be used to look up the
-            // associated glyph descriptions from the subtable'. This means
-            // charcodes in the cmap will be single bytes, so no-op since
-            // glyph.charCode & 0xFF === glyph.charCode
-            for (var i = 0; i < cmapMappingsLength; ++i) {
-              // !!!!!!!!! TODO Fix this so its char*C*ode
-              charCodeToGlyphId[cmapMappings[i].charcode & 0xFF] = cmapMappings[i].glyphId;
-            }
-          } else {
-            die('todo alternative cmap encoding222');
+          // For (3, 0) cmap tables:
+          // The charcode key being stored in charCodeToGlyphId is the lower
+          // byte of the two-byte charcodes of the cmap table since according to
+          // the spec: 'each byte from the string shall be prepended with the
+          // high byte of the range [of charcodes in the cmap table], to form
+          // a two-byte character, which shall be used to select the
+          // associated glyph description from the subtable'.
+          //
+          // For (1, 0) cmap tables:
+          // 'single bytes from the string shall be used to look up the
+          // associated glyph descriptions from the subtable'. This means
+          // charcodes in the cmap will be single bytes, so no-op since
+          // glyph.charCode & 0xFF === glyph.charCode
+          for (var i = 0; i < cmapMappingsLength; ++i) {
+            // !!!!!!!!! TODO Fix this so its char*C*ode
+            charCodeToGlyphId[cmapMappings[i].charcode & 0xFF] = cmapMappings[i].glyphId;
           }
         }
+      }
+      // !!!!!!!!!!!! TODO fill missing gaps from post table
 
         // if (hasShortCmap && ids.length == numGlyphs) {
         //   // Fixes the short cmap tables -- some generators use incorrect
@@ -4058,7 +3939,6 @@ var Font = (function FontClosure() {
         //     // newToFontChar[glyph.charCode & 0xFF] = glyph.fontCharCode;
         //   }
         // }
-      }
 
       if (charCodeToGlyphId.length === 0) {
         // defines at least one glyph
@@ -4068,7 +3948,6 @@ var Font = (function FontClosure() {
       // Converting glyphs and ids into font's cmap table
       var newMapping = adjustMapping(charCodeToGlyphId, this.toUnicode);
       this.toFontChar = newMapping.toFontChar;
-      // !!!!!!!!!! why was this passing ids
       tables.cmap = {
         tag: 'cmap',
         data: createCmapTable(newMapping.charCodeToGlyphId)
@@ -4316,15 +4195,32 @@ var Font = (function FontClosure() {
       if (properties.toUnicode) {
         return properties.toUnicode;
       }
-      if (!properties.composite /* is simple font */) {
-        //if (encodingName === 'MacRomanEncoding' ||
-            // encodingName == 'MacExpertEncoding' ||
-            // encodingName === 'WinAnsiEncoding'
+      var encodingName = properties.baseEncodingName;
+      if (!properties.composite /* is simple font */) { /*&&
+          (encodingName === 'MacRomanEncoding' ||
+           encodingName === 'MacExpertEncoding' ||
+           encodingName === 'WinAnsiEncoding')) {*/
             /* TODO or or that has an encoding whose Differences array includes only character names taken from the Adobe standard Latin character set and the set of named characters in the Symbol font (see Annex D):*/
            // ) {
           var toUnicode = [];
-          // /var encoding = Encodings[encodingName].slice();
-          var encoding = properties.baseEncoding.slice();
+          if (encodingName) {
+            var encoding = Encodings[encodingName].slice();
+          } else {
+            // !!!!!!!!!! todo this is bad we should look up the encoding actually
+            // in the font file.
+            var encoding = properties.type === 'TrueType' ?
+                    Encodings.WinAnsiEncoding :
+                    Encodings.StandardEncoding;
+          // The Symbolic attribute can be misused for regular fonts
+          // Heuristic: we have to check if the font is a standard one also
+          if (!!(properties.flags & FontFlags.Symbolic)) {
+            encoding = !properties.file ? Encodings.symbolsEncoding :
+                                              Encodings.MacRomanEncoding;
+          }
+
+            encoding = encoding.slice();
+
+          }
           // Merge in the differences array.
           var differences = properties.differences;
           for (var charcode in differences) {
@@ -4692,6 +4588,50 @@ var ErrorFont = (function ErrorFontClosure() {
 
   return ErrorFont;
 })();
+
+function type1FontGlyphMapping(properties, builtInEncoding, glyphNames) {
+  var charCodeToGlyphId = Object.create(null);
+  if (properties.baseEncodingName) {
+    // If a valid base encoding name was used, the mapping is intialized with
+    // that.
+    var baseEncoding = Encodings[properties.baseEncodingName];
+    for (var charCode = 0; charCode < baseEncoding.length; charCode++) {
+      var glyphId = glyphNames.indexOf(baseEncoding[charCode]);
+      if (glyphId >= 0) {
+        charCodeToGlyphId[charCode] = glyphId;
+      }
+    }
+  } else if (!!(properties.flags & FontFlags.Symbolic)) {
+    // For a symbolic font the encoding should be the fonts built-in
+    // encoding.
+    for (var charCode in builtInEncoding) {
+      charCodeToGlyphId[charCode] = builtInEncoding[charCode];
+    }
+  } else {
+    // For non-symbolic fonts that don't have a base encoding the standard
+    // encoding should be used.
+    var baseEncoding = Encodings.StandardEncoding;
+    for (var charCode = 0; charCode < baseEncoding.length; charCode++) {
+      var glyphId = glyphNames.indexOf(baseEncoding[charCode]);
+      if (glyphId >= 0) {
+        charCodeToGlyphId[charCode] = glyphId;
+      }
+    }
+  }
+
+  // Lastly, merge in the differences.
+  var differences = properties.differences;
+  if (differences) {
+    for (var charCode in differences) {
+      var glyphName = differences[charCode];
+      var glyphId = glyphNames.indexOf(glyphName);
+      if (glyphId >= 0) {
+        charCodeToGlyphId[charCode] = glyphId;
+      }
+    }
+  }
+  return charCodeToGlyphId;
+}
 
 /*
  * CharStrings are encoded following the the CharString Encoding sequence
@@ -5314,16 +5254,7 @@ var Type1Parser = (function Type1ParserClosure() {
                 this.getToken(); // read the in 'put'
               }
             }
-            if (properties.overridableEncoding && encoding) {
-              properties.baseEncoding = encoding;
-              break;
-            }
-            // !!!!!!!!!! issue1685 triggers this, do we need the encoding?
-            // if (encoding) {
-            //   debugger;
-            //   console.log('!!!!!!!!! hi: ' + zzEncoding);
-            //   properties.zzEncoding = encoding;
-            // }
+            properties.builtInEncoding = encoding;
             break;
           case 'FontBBox':
             var fontBBox = this.readNumberArray();
@@ -5425,7 +5356,6 @@ var Type1Font = function Type1Font(name, file, properties) {
   var data = eexecBlockParser.extractFontProgram();
   for (var info in data.properties)
     properties[info] = data.properties[info];
-  this.charMap = properties.zzEncoding;
 
   var charstrings = this.getOrderedCharStrings(data.charstrings, properties);
   var type2Charstrings = this.getType2Charstrings(charstrings);
@@ -5440,18 +5370,6 @@ var Type1Font = function Type1Font(name, file, properties) {
 Type1Font.prototype = {
   get numGlyphs() {
     return this.charstrings.length;
-  },
-  getCharMap: function () {
-    return this.charMap;
-  },
-
-  getGlyphIndex: function (name) {
-    for (var i = 0, length = this.charstrings.length; i < length; i++) {
-      if (this.charstrings[i].glyphName === name) {
-        return i;
-      }
-    }
-    return 0;
   },
 
   getOrderedCharStrings: function Type1Font_getOrderedCharStrings(glyphs) {
@@ -5470,43 +5388,22 @@ Type1Font.prototype = {
 
   getGlyphMapping: function Type1Font_getGlyphMapping(charstrings, properties) {
 
-    function getGlyphId(glyphName) {
-      for (var i = 0, length = charstrings.length; i < length; i++) {
-        if (glyphName === charstrings[i].glyphName) {
-          return i + 1; // We add a notdef glyph, which may or may not be needed
+    var glyphNames = ['.notdef'];
+    for (var glyphId = 0; glyphId < charstrings.length; glyphId++) {
+      glyphNames.push(charstrings[glyphId].glyphName);
+    }
+    var encoding = properties.builtInEncoding;
+    if (encoding) {
+      var builtInEncoding = {};
+      for (var charCode in encoding) {
+        var glyphId = glyphNames.indexOf(encoding[charCode]);
+        if (glyphId >= 0) {
+          builtInEncoding[charCode] = glyphId;
         }
       }
-      return -1;
     }
 
-    var charCodeToGlyphId = Object.create({});
-    for (var charCode = 0; charCode < 255; charCode++) {
-      // The differences array is the highest priority, check there first.
-      if (charCode in properties.differences) {
-        var glyphName = properties.differences[charCode];
-        var glyphId = getGlyphId(glyphName);
-        if (glyphId >= 0) {
-          charCodeToGlyphId[charCode] = glyphId;
-          continue;
-        }
-      }
-
-      // Try the base encoding next. This is either the encoding from the font
-      // dictionary or the encoding embedded in the font.
-      if (charCode in properties.baseEncoding && properties.baseEncoding[charCode] !== '') {
-        var glyphName = properties.baseEncoding[charCode];
-        var glyphId = getGlyphId(glyphName);
-        if (glyphId >= 0) {
-          charCodeToGlyphId[charCode] = glyphId;
-          continue;
-        }
-      }
-
-      // The char code wasn't found so we'll map it to notdef.
-      charCodeToGlyphId[charCode] = 0;
-    }
-
-    return charCodeToGlyphId;
+    return type1FontGlyphMapping(properties, builtInEncoding, glyphNames);
   },
 
   getSeacs: function Type1Font_getSeacs(charstrings) {
@@ -5675,8 +5572,7 @@ var CFFFont = (function CFFFontClosure() {
 
   CFFFont.prototype = {
     get numGlyphs() {
-      debugger;
-      return this.cff.charStrings.length;
+      return this.cff.charStrings.count;
     },
     readExtra: function CFFFont_readExtra() {
       this.seacs = this.cff.seacs;
@@ -5709,40 +5605,8 @@ var CFFFont = (function CFFFontClosure() {
         return charCodeToGlyphId;
       }
 
-      if (!!(this.properties.flags & FontFlags.Symbolic)) {
-        // For a symbolic font the encoding should be the fonts built-in
-        // encoding.
-        var encoding = cff.encoding ? cff.encoding.encoding : null;
-        if (encoding === null) {
-          die('this shouldnt happen');
-        }
-        for (var charCode in encoding) {
-          charCodeToGlyphId[charCode] = encoding[charCode];
-        }
-      } else {
-        // For non-symbolic fonts the name should be a predefined encoding
-        var baseEncoding = this.properties.baseEncoding;
-        for (var charCode = 0; charCode < baseEncoding.length; charCode++) {
-          var glyphName = baseEncoding[charCode];
-          var glyphId = charsets.indexOf(glyphName);
-          if (glyphId >= 0) {
-            charCodeToGlyphId[charCode] = glyphId;
-          }
-        }
-      }
-
-      // Lastly, merge in the differences.
-      if (this.properties.differences) {
-        var differences = this.properties.differences;
-        for (var charCode in differences) {
-          var glyphName = differences[charCode];
-          var glyphId = charsets.indexOf(glyphName);
-          if (glyphId >= 0) {
-            charCodeToGlyphId[charCode] = glyphId;
-          }
-        }
-      }
-      return charCodeToGlyphId;
+      var encoding = cff.encoding ? cff.encoding.encoding : null;
+      return type1FontGlyphMapping(this.properties, encoding, charsets);
     }
   };
 
