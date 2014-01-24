@@ -4087,24 +4087,7 @@ var Font = (function FontClosure() {
             /* TODO or or that has an encoding whose Differences array includes only character names taken from the Adobe standard Latin character set and the set of named characters in the Symbol font (see Annex D):*/
            // ) {
           var toUnicode = [];
-          if (encodingName) {
-            var encoding = Encodings[encodingName].slice();
-          } else {
-            // !!!!!!!!!! todo this is bad we should look up the encoding actually
-            // in the font file.
-            var encoding = properties.type === 'TrueType' ?
-                    Encodings.WinAnsiEncoding :
-                    Encodings.StandardEncoding;
-          // The Symbolic attribute can be misused for regular fonts
-          // Heuristic: we have to check if the font is a standard one also
-          if (!!(properties.flags & FontFlags.Symbolic)) {
-            encoding = !properties.file ? Encodings.symbolsEncoding :
-                                              Encodings.MacRomanEncoding;
-          }
-
-            encoding = encoding.slice();
-
-          }
+          var encoding = properties.defaultEncoding.slice();
           // Merge in the differences array.
           var differences = properties.differences;
           for (var charcode in differences) {
