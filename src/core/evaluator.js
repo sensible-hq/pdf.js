@@ -970,7 +970,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       // read here, but the encoding that is actually used is chosen during
       // glyph mapping in the font.
       var differences = [];
-      debugger;
       var baseEncodingName = null;
       if (dict.has('Encoding')) {
         var encoding = dict.get('Encoding');

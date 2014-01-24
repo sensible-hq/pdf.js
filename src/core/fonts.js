@@ -425,102 +425,6 @@ var symbolsFonts = {
   'Dingbats': true, 'Symbol': true, 'ZapfDingbats': true
 };
 
-var CMapConverterList = {
-  'H': jis7ToUnicode,
-  'V': jis7ToUnicode,
-  'EUC-H': eucjpToUnicode,
-  'EUC-V': eucjpToUnicode,
-  '83pv-RKSJ-H': sjis83pvToUnicode,
-  '90pv-RKSJ-H': sjis90pvToUnicode,
-  '90ms-RKSJ-H': sjisToUnicode,
-  '90ms-RKSJ-V': sjisToUnicode,
-  '90msp-RKSJ-H': sjisToUnicode,
-  '90msp-RKSJ-V': sjisToUnicode,
-  'GBK-EUC-H': gbkToUnicode,
-  'GBKp-EUC-H': gbkToUnicode,
-  'B5pc-H': big5ToUnicode,
-  'ETenms-B5-H': big5ToUnicode,
-  'ETenms-B5-V': big5ToUnicode,
-};
-
-// CMaps using Hankaku (Halfwidth) Latin glyphs instead of proportional one.
-// We need to distinguish them to get correct widths from CIDFont dicts.
-var HalfwidthCMaps = {
-  'H': true,
-  'V': true,
-  'EUC-H': true,
-  'EUC-V': true,
-  '90ms-RKSJ-H': true,
-  '90ms-RKSJ-V': true,
-  'UniJIS-UCS2-HW-H': true,
-  'UniJIS-UCS2-HW-V': true
-};
-
-var decodeBytes;
-if (typeof TextDecoder !== 'undefined') {
-  // The encodings supported by TextDecoder can be found at:
-  // http://encoding.spec.whatwg.org/#concept-encoding-get
-  decodeBytes = function(bytes, encoding, fatal) {
-    return new TextDecoder(encoding, {fatal: !!fatal}).decode(bytes);
-  };
-} else if (typeof FileReaderSync !== 'undefined') {
-  decodeBytes = function(bytes, encoding) {
-    return new FileReaderSync().readAsText(new Blob([bytes]), encoding);
-  };
-} else {
-  // Clear the list so that decodeBytes will never be called.
-  CMapConverterList = {};
-}
-
-function jis7ToUnicode(str) {
-  var bytes = stringToBytes(str);
-  var length = bytes.length;
-  for (var i = 0; i < length; ++i) {
-    bytes[i] |= 0x80;
-  }
-  return decodeBytes(bytes, 'euc-jp');
-}
-
-function eucjpToUnicode(str) {
-  return decodeBytes(stringToBytes(str), 'euc-jp');
-}
-
-function sjisToUnicode(str) {
-  return decodeBytes(stringToBytes(str), 'shift_jis');
-}
-
-function sjis83pvToUnicode(str) {
-  var bytes = stringToBytes(str);
-  try {
-    // TODO: 83pv has incompatible mappings in ed40..ee9c range.
-    return decodeBytes(bytes, 'shift_jis', true);
-  } catch (e) {
-    TODO('Unsupported 83pv character found');
-    // Just retry without checking errors for now.
-    return decodeBytes(bytes, 'shift_jis');
-  }
-}
-
-function sjis90pvToUnicode(str) {
-  var bytes = stringToBytes(str);
-  try {
-    // TODO: 90pv has incompatible mappings in 8740..879c and eb41..ee9c.
-    return decodeBytes(bytes, 'shift_jis', true);
-  } catch (e) {
-    TODO('Unsupported 90pv character found');
-    // Just retry without checking errors for now.
-    return decodeBytes(bytes, 'shift_jis');
-  }
-}
-
-function gbkToUnicode(str) {
-  return decodeBytes(stringToBytes(str), 'gbk');
-}
-
-function big5ToUnicode(str) {
-  return decodeBytes(stringToBytes(str), 'big5');
-}
-
 // Some characters, e.g. copyrightserif, mapped to the private use area and
 // might not be displayed using standard fonts. Mapping/hacking well-known chars
 // to the similar equivalents in the normal characters range.
@@ -2198,8 +2102,6 @@ var Font = (function FontClosure() {
       return;
     }
 
-    // Trying to fix encoding using glyph CIDSystemInfo.
-    this.loadCidToUnicode(properties);
     this.cidEncoding = properties.cidEncoding;
     this.vertical = properties.vertical;
     if (this.vertical) {
@@ -2207,13 +2109,8 @@ var Font = (function FontClosure() {
       this.defaultVMetrics = properties.defaultVMetrics;
     }
 
-    // debugger;
     this.toUnicode = this.buildToUnicode(properties);
     properties.toUnicode = this.toUnicode;
-    // if (properties.toUnicode && properties.toUnicode.length > 0)
-    //   this.toUnicode = properties.toUnicode;
-    // else
-    //   this.rebuildToUnicode(properties);
 
     this.toFontChar = [];
     if (!file) {
@@ -2456,19 +2353,6 @@ var Font = (function FontClosure() {
       toFontChar: toFontChar,
       charCodeToGlyphId: newMap
     };
-  }
-
-  function zzbuildToFontChar(mapping) {
-    var toFontChar = [];
-    for (var i = 0; i < mapping.length; i++) {
-      /// REMOVE THIS CHECK
-      // if (mapping[i].originalCharCode in toFontChar) {
-      //   debugger
-      //   die('already mapped');
-      // }
-      toFontChar[mapping[i].originalCharCode] = mapping[i].fontCharCode;
-    }
-    return toFontChar;
   }
 
   function getRanges(glyphs) {
@@ -4290,126 +4174,6 @@ var Font = (function FontClosure() {
       return map;
     },
 
-    buildToFontChar: function Font_buildToFontChar(toUnicode) {
-      var result = [];
-      var unusedUnicode = CMAP_GLYPH_OFFSET;
-      for (var i = 0, ii = toUnicode.length; i < ii; i++) {
-        var unicode = toUnicode[i];
-        var fontCharCode = typeof unicode === 'object' ? unusedUnicode++ :
-          unicode;
-        if (typeof unicode !== 'undefined') {
-          if (isString(fontCharCode) && fontCharCode.length === 1) {
-            fontCharCode = fontCharCode.charCodeAt(0);
-          }
-          result[i] = fontCharCode;
-        }
-      }
-      return result;
-    },
-
-    rebuildToUnicode: function Font_rebuildToUnicode(properties) {
-      var firstChar = properties.firstChar, lastChar = properties.lastChar;
-      var map = [];
-      var toUnicode = this.toUnicode || this.cidToUnicode;
-      if (toUnicode) {
-        var isIdentityMap = toUnicode.length === 0;
-        for (var i = firstChar, ii = lastChar; i <= ii; i++) {
-          // TODO missing map the character according font's CMap
-          map[i] = isIdentityMap ? String.fromCharCode(i) : toUnicode[i];
-        }
-      } else {
-        for (var i = firstChar, ii = lastChar; i <= ii; i++) {
-          var glyph = properties.differences[i];
-          if (!glyph)
-            glyph = properties.baseEncoding[i];
-          if (!!glyph && (glyph in GlyphsUnicode))
-            map[i] = String.fromCharCode(GlyphsUnicode[glyph]);
-        }
-      }
-      this.toUnicode = map;
-    },
-
-    loadCidToUnicode: function Font_loadCidToUnicode(properties) {
-      if (!properties.cidSystemInfo)
-        return;
-
-      var cidToUnicodeMap = [], unicodeToCIDMap = [];
-      this.cidToUnicode = cidToUnicodeMap;
-      this.unicodeToCID = unicodeToCIDMap;
-
-      var cidEncoding = properties.cidEncoding;
-      if (properties.toUnicode) {
-        if (cidEncoding && cidEncoding.indexOf('Identity-') !== 0) {
-          TODO('Need to create a reverse mapping from \'ToUnicode\' CMap');
-        }
-        return; // 'ToUnicode' CMap will be used
-      }
-
-      var cidSystemInfo = properties.cidSystemInfo;
-      var cidToUnicode;
-      if (cidSystemInfo) {
-        cidToUnicode = CIDToUnicodeMaps[
-          cidSystemInfo.registry + '-' + cidSystemInfo.ordering];
-      }
-
-      if (!cidToUnicode)
-        return; // identity encoding
-
-      var overwrite = HalfwidthCMaps[cidEncoding];
-      var cid = 1, i, j, k, ii;
-      for (i = 0, ii = cidToUnicode.length; i < ii; ++i) {
-        var unicode = cidToUnicode[i];
-        if (isArray(unicode)) {
-          var length = unicode.length;
-          for (j = 0; j < length; j++) {
-            cidToUnicodeMap[cid] = k = unicode[j];
-            if (!unicodeToCIDMap[k] || overwrite) {
-              unicodeToCIDMap[k] = cid;
-            }
-          }
-          cid++;
-        } else if (typeof unicode === 'object') {
-          var fillLength = unicode.f;
-          if (fillLength) {
-            k = unicode.c;
-            for (j = 0; j < fillLength; ++j) {
-              cidToUnicodeMap[cid] = k;
-              if (!unicodeToCIDMap[k] || overwrite) {
-                unicodeToCIDMap[k] = cid;
-              }
-              cid++;
-              k++;
-            }
-          } else
-            cid += unicode.s;
-        } else if (unicode) {
-          cidToUnicodeMap[cid] = unicode;
-          if (!unicodeToCIDMap[unicode] || overwrite) {
-            unicodeToCIDMap[unicode] = cid;
-          }
-          cid++;
-        } else
-          cid++;
-      }
-
-      if (!cidEncoding) {
-        return;
-      }
-      if (cidEncoding.indexOf('Identity-') !== 0) {
-        // input is already Unicode for non-Identity CMap encodings.
-        this.cidToUnicode = [];
-        // For CIDFontType2, however, we need cid-to-Unicode conversion
-        // to rebuild cmap.
-        if (properties.type == 'CIDFontType2') {
-          this.cidToFontChar = cidToUnicodeMap;
-        }
-      } else {
-        // We don't have to do reverse conversions if the string is
-        // already CID.
-        this.unicodeToCID = [];
-      }
-    },
-
     get spaceWidth() {
       if ('_shadowWidth' in this) {
         return this._shadowWidth;
@@ -4428,8 +4192,11 @@ var Font = (function FontClosure() {
         var glyphUnicode = GlyphsUnicode[glyphName];
         // finding the charcode via unicodeToCID map
         var charcode = 0;
-        if (this.composite)
-          charcode = this.unicodeToCID[glyphUnicode];
+        if (this.composite) {
+          if (glyphUnicode in this.cmap.map) {
+            charcode = this.cmap.lookup(glyphUnicode).charCodeAt(0);
+          }
+        }
         // ... via toUnicode map
         if (!charcode && 'toUnicode' in this)
           charcode = this.toUnicode.indexOf(glyphUnicode);
@@ -4524,20 +4291,6 @@ var Font = (function FontClosure() {
 
       glyphs = [];
       var charsCacheKey = chars;
-
-      var converter;
-      var cidEncoding = this.cidEncoding;
-      // cidEncoding = 'GBK-EUC-H';
-      // if (cidEncoding) {
-      //   converter = CMapConverterList[cidEncoding];
-      //   if (converter) {
-      //     chars = converter(chars);
-      //     // console.log(chars);
-      //   } else if (cidEncoding.indexOf('Uni') !== 0 &&
-      //              cidEncoding.indexOf('Identity-') !== 0) {
-      //     warn('Unsupported CMap: ' + cidEncoding);
-      //   }
-      // }
 
       if (this.cmap) {
         var i = 0;
