@@ -428,7 +428,10 @@ var symbolsFonts = {
 // Some characters, e.g. copyrightserif, mapped to the private use area and
 // might not be displayed using standard fonts. Mapping/hacking well-known chars
 // to the similar equivalents in the normal characters range.
-function mapPrivateUseChars(code) {
+function mapSpecialUnicodeValues(code) {
+  if (code >= 0xFFF0 && code <= 0xFFFF) { // Specials unicode block.
+    return 0;
+  }
   switch (code) {
     case 0xF8E9: // copyrightsans
     case 0xF6D9: // copyrightserif
@@ -3836,11 +3839,6 @@ var Font = (function FontClosure() {
         tag: 'cmap',
         data: createCmapTable(newMapping.charCodeToGlyphId)
       };
-      // var unicodeIsEnabled = [];
-      // for (var i = 0, ii = glyphs.length; i < ii; i++) {
-      //   unicodeIsEnabled[glyphs[i].unicode] = true;
-      // }
-      // this.unicodeIsEnabled = unicodeIsEnabled;
 
       if (!tables['OS/2'] || !validateOS2Table(tables['OS/2'])) {
         // extract some more font properties from the OpenType head and
@@ -4199,7 +4197,7 @@ var Font = (function FontClosure() {
     },
 
     charToGlyph: function Font_charToGlyph(charcode) {
-      var fontCharCode, width, operatorList, disabled;
+      var fontCharCode, width, operatorList;
 
       var widthCode = charcode;
       // !!!!!! should figure out if we always want to define a cMap!
@@ -4228,13 +4226,10 @@ var Font = (function FontClosure() {
           // to the unicodeChars(which may just be the charcode).
           fontCharCode = this.toFontChar[charcode] || charcode;
           if (this.missingFile) {
-            fontCharCode = mapPrivateUseChars(fontCharCode);
+            fontCharCode = mapSpecialUnicodeValues(fontCharCode);
           }
           break;
       }
-
-      disabled = false; //this.unicodeIsEnabled ?
-        // !this.unicodeIsEnabled[fontCharCode] : false;
 
       var accent = null;
       if (this.seacMap && this.seacMap[fontCharCode]) {
@@ -4252,7 +4247,6 @@ var Font = (function FontClosure() {
         accent: accent,
         width: width,
         vmetric: vmetric,
-        disabled: disabled,
         operatorList: operatorList
       };
     },
