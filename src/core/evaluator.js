@@ -28,11 +28,8 @@ function zzWidths(byGlyphName, properties) {
 debugger;
             // !!!!!!!!!! todo this is bad we should look up the encoding actually
             // in the font file.
-            var encoding = properties.type === 'TrueType' ?
-                    Encodings.WinAnsiEncoding :
-                    Encodings.StandardEncoding;
-            encoding = encoding.slice();
-// Fill in the widths by charcode.
+            var encoding = properties.defaultEncoding.slice();
+          // Fill in the widths by charcode.
           var widths = {};
           for (var glyphName in byGlyphName) {
             // !!!!!!!!! We're doing this a lot, maybe factor it out.
@@ -1000,6 +997,23 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
              baseEncodingName !== 'WinAnsiEncoding')) {
           baseEncodingName = null;
         }
+      }
+
+      if (baseEncodingName) {
+        properties.defaultEncoding = Encodings[baseEncodingName].slice();
+      } else {
+        // !!!!!!!!!! todo this is bad we should look up the encoding actually
+        // in the font file.
+        var encoding = properties.type === 'TrueType' ?
+                Encodings.WinAnsiEncoding :
+                Encodings.StandardEncoding;
+        // The Symbolic attribute can be misused for regular fonts
+        // Heuristic: we have to check if the font is a standard one also
+        if (!!(properties.flags & FontFlags.Symbolic)) {
+          encoding = !properties.file ? Encodings.symbolsEncoding :
+                                            Encodings.MacRomanEncoding;
+        }
+        properties.defaultEncoding = encoding;
       }
 
       properties.differences = differences;
