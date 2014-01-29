@@ -24,27 +24,6 @@
 
 'use strict';
 
-function zzWidths(byGlyphName, properties) {
-debugger;
-            // !!!!!!!!!! todo this is bad we should look up the encoding actually
-            // in the font file.
-            var encoding = properties.defaultEncoding.slice();
-          // Fill in the widths by charcode.
-          var widths = {};
-          for (var glyphName in byGlyphName) {
-            // !!!!!!!!! We're doing this a lot, maybe factor it out.
-            var charCode = properties.differences.indexOf(glyphName);
-            if (charCode >= 0) {
-              widths[charCode] = byGlyphName[glyphName];
-            }
-            charCode = encoding.indexOf(glyphName);
-            if (charCode >= 0) {
-              widths[charCode] = byGlyphName[glyphName];
-            }
-          }
-          return widths;
-
-}
 var PartialEvaluator = (function PartialEvaluatorClosure() {
   function PartialEvaluator(pdfManager, xref, handler, pageIndex,
                             uniquePrefix, idCounters) {
@@ -1126,7 +1105,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           if (isName(baseFontName)) {
             var metrics = this.getBaseFontMetrics(baseFontName.name);
 
-            glyphsWidths = zzWidths(metrics.widths, properties);
+            glyphsWidths = this.buildCharCodeToWidth(metrics.widths, properties);
             defaultWidth = metrics.defaultWidth;
           }
         }
@@ -1194,6 +1173,24 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       };
     },
 
+    buildCharCodeToWidth: function PartialEvaluator_bulildCharCodeToWidth(
+                            widthsByGlyphName, properties) {
+      var widths = Object.create(null);
+      var differences = properties.differences;
+      var encoding = properties.defaultEncoding;
+      for (var charCode = 0; charCode < 255; charCode++) {
+        if (charCode in differences && widthsByGlyphName[differences[charCode]]) {
+          widths[charCode] = widthsByGlyphName[differences[charCode]];
+          continue;
+        }
+        if (charCode in encoding && widthsByGlyphName[encoding[charCode]]) {
+          widths[charCode] = widthsByGlyphName[encoding[charCode]];
+          continue;
+        }
+      }
+      return widths;
+    },
+
     translateFont: function PartialEvaluator_translateFont(dict,
                                                            xref) {
       var baseDict = dict;
@@ -1254,7 +1251,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
             lastChar: maxCharIndex
           };
           this.extractDataStructures(dict, dict, xref, properties);
-          properties.widths = zzWidths(metrics.widths, properties);
+          properties.widths = this.buildCharCodeToWidth(metrics.widths, properties);
 
           return new Font(baseFontName, null, properties);
         }
