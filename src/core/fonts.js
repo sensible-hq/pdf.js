@@ -23,9 +23,9 @@
 'use strict';
 
 // Unicode Private Use Area
-var CMAP_GLYPH_OFFSET = 0xE000;
-var GLYPH_AREA_SIZE = 0x1900;
-var SYMBOLIC_FONT_GLYPH_OFFSET = 0xF000;
+var PRIVATE_USE_OFFSET_START = 0xE000;
+var PRIVATE_USE_OFFSET_END = 0xF8FF;
+var SKIP_PRIVATE_USE_RANGE_F000_TO_F01F = false;
 
 // PDF Glyph Space Units are one Thousandth of a TextSpace Unit
 // except for Type 3 fonts
@@ -2112,8 +2112,11 @@ var Font = (function FontClosure() {
       this.defaultVMetrics = properties.defaultVMetrics;
     }
 
-    this.toUnicode = this.buildToUnicode(properties);
+    var unicodeMap = this.buildToUnicode(properties);
+    this.toUnicode = unicodeMap.toUnicode;
+    this.isIdentityUnicode = unicodeMap.isIdentity;
     properties.toUnicode = this.toUnicode;
+    properties.isIdentityUnicode = this.isIdentityUnicode;
 
     this.toFontChar = [];
     if (!file) {
@@ -2317,18 +2320,22 @@ var Font = (function FontClosure() {
     file.virtualOffset += data.length;
   }
 
-  function adjustMapping(charCodeToGlyphId, toUnicode) {
+  function adjustMapping(charCodeToGlyphId, properties) {
+    var toUnicode = properties.toUnicode;
+    var isSymbolic = !!(properties.flags & FontFlags.Symbolic);
+    var isIdentityUnicode = properties.isIdentityUnicode;
     var newMap = Object.create(null);
     var toFontChar = [];
     var usedCharCodes = [];
     var usedFontCharCodes = [];
-    var nextAvailableFontCharCode = CMAP_GLYPH_OFFSET;
+    var nextAvailableFontCharCode = PRIVATE_USE_OFFSET_START;
     for (var originalCharCode in charCodeToGlyphId) {
       originalCharCode |= 0;
       var glyphId = charCodeToGlyphId[originalCharCode];
       var fontCharCode = originalCharCode;
-      // First try to map the value to a unicode position.
-      if (originalCharCode in toUnicode) {
+      // First try to map the value to a unicode position if a non identity map
+      // was created.
+      if (!isIdentityUnicode && originalCharCode in toUnicode) {
         var temp = toUnicode[fontCharCode];
         if (temp.length > 1) {
           // !!!!!!!!!!! how do we handle something like 'th' TODO
@@ -2337,17 +2344,32 @@ var Font = (function FontClosure() {
           fontCharCode = temp.charCodeAt(0);
         }
       }
-      if (fontCharCode in usedFontCharCodes ||
-          fontCharCode <= 0x1f ||
-          fontCharCode === 0x7F ||
-          fontCharCode === 0xAD || // Soft Hyphen - will not show up on canvas.
-          (fontCharCode >= 0x80 && fontCharCode <= 0x9F)) {
-        // Remap control characters or already used values.
+      // Try to move control characters, special characters and already mapped
+      // characters to the private use area since they will not be drawn by
+      // canvas if left in their current position. Also, move characters if the
+      // font was symbolic and there is only an identity unicode map since the
+      // characters probably aren't in the correct position (fixes an issue
+      // with firefox and thuluthfont).
+      if ((fontCharCode in usedFontCharCodes ||
+           fontCharCode <= 0x1f || // Control chars
+           fontCharCode === 0x7F || // Control char
+           fontCharCode === 0xAD || // Soft hyphen
+           (fontCharCode >= 0x80 && fontCharCode <= 0x9F) || // Control chars
+           (isSymbolic && isIdentityUnicode)) &&
+          nextAvailableFontCharCode <= PRIVATE_USE_OFFSET_END) { // There has to be space left.
         fontCharCode = nextAvailableFontCharCode++;
-        if (fontCharCode in usedFontCharCodes) {
-          die('WE SHOULD INCREMENT HERE IN A LOOP');
+
+        if (SKIP_PRIVATE_USE_RANGE_F000_TO_F01F && fontCharCode === 0xF000) {
+          fontCharCode = 0xF020;
+          nextAvailableFontCharCode = fontCharCode + 1;
+        }
+
+        while (fontCharCode in usedFontCharCodes &&
+               nextAvailableFontCharCode <= PRIVATE_USE_OFFSET_END) {
+          fontCharCode = nextAvailableFontCharCode++;
         }
       }
+
       newMap[fontCharCode] = glyphId;
       toFontChar[originalCharCode] = fontCharCode;
       usedFontCharCodes[fontCharCode] = true;
@@ -3833,7 +3855,7 @@ var Font = (function FontClosure() {
       }
 
       // Converting glyphs and ids into font's cmap table
-      var newMapping = adjustMapping(charCodeToGlyphId, this.toUnicode);
+      var newMapping = adjustMapping(charCodeToGlyphId, properties);
       this.toFontChar = newMapping.toFontChar;
       tables.cmap = {
         tag: 'cmap',
@@ -3975,7 +3997,7 @@ var Font = (function FontClosure() {
       var mapping = font.getGlyphMapping(font.charstrings, properties);
       // !!!! THIS IS BAD
       charstrings = font.charstrings;
-      var newMapping = adjustMapping(mapping, this.toUnicode);
+      var newMapping = adjustMapping(mapping, properties);
       this.toFontChar = newMapping.toFontChar;
       var numGlyphs = font.numGlyphs;
 
@@ -4073,9 +4095,14 @@ var Font = (function FontClosure() {
     },
 
     buildToUnicode: function Font_buildToUnicode(properties) {
+      var map = {
+        isIdentity: false,
+        toUnicode: null
+      };
       // Section 9.10.2 Mapping Character Codes to Unicode Values
       if (properties.toUnicode) {
-        return properties.toUnicode;
+        map.toUnicode = properties.toUnicode;
+        return map;
       }
       var encodingName = properties.baseEncodingName;
       if (!properties.composite /* is simple font */) { /*&&
@@ -4101,7 +4128,8 @@ var Font = (function FontClosure() {
             }
             toUnicode[charcode] = String.fromCharCode(GlyphsUnicode[glyphName]);
           }
-          return toUnicode;
+          map.toUnicode = toUnicode;
+          return map;
         //}
       }
       // If the font is a composite font that uses one of the predefined CMaps
@@ -4132,7 +4160,7 @@ var Font = (function FontClosure() {
         // from the ASN Web site; see the Bibliography).
         var ucs2CMap = CMapFactory.create(ucs2CMapName, PDFJS.cMapUrl, null);
         var cMap = properties.cmap;
-        var map = [];
+        var toUnicode = [];
         for (var charcode in cMap.map) {
           var cid = cMap.map[charcode];
           assert(cid.length === 1, '!!!!!! support longer ones');
@@ -4142,16 +4170,19 @@ var Font = (function FontClosure() {
           if (!ucs2) {
             continue;
           }
-          map[charcode] = String.fromCharCode((ucs2.charCodeAt(0) << 8) + ucs2.charCodeAt(1));
+          toUnicode[charcode] = String.fromCharCode((ucs2.charCodeAt(0) << 8) + ucs2.charCodeAt(1));
         }
+        map.toUnicode = toUnicode;
         return map;
       }
       // The viewer's choice, just use an identity map.
-      var map = [];
+      var toUnicode = [];
       var firstChar = properties.firstChar, lastChar = properties.lastChar;
       for (var i = firstChar, ii = lastChar; i <= ii; i++) {
-        map[i] = String.fromCharCode(i);
+        toUnicode[i] = String.fromCharCode(i);
       }
+      map.isIdentity = true;
+      map.toUnicode = toUnicode;
       return map;
     },
 
@@ -6723,6 +6754,6 @@ var CFFCompiler = (function CFFCompilerClosure() {
 // https://github.com/mozilla/pdf.js/issues/1689
 (function checkChromeWindows() {
   if (/Windows.*Chrome/.test(navigator.userAgent)) {
-    SYMBOLIC_FONT_GLYPH_OFFSET = 0xF100;
+    SKIP_PRIVATE_USE_RANGE_F000_TO_F01F = true;
   }
 })();
