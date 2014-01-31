@@ -4943,11 +4943,11 @@ var Type1Parser = (function Type1ParserClosure() {
           output = [14];
         }
         program.charstrings.push({
-          glyph: glyph,
-          data: output,
-          seac: charString.seac,
+          glyphName: glyph,
+          charstring: output,
+          width: charString.width,
           lsb: charString.lsb,
-          width: charString.width
+          seac: charString.seac
         });
       }
 
@@ -5099,7 +5099,7 @@ var Type1Font = function Type1Font(name, file, properties) {
   for (var info in data.properties)
     properties[info] = data.properties[info];
 
-  var charstrings = this.getOrderedCharStrings(data.charstrings, properties);
+  var charstrings = data.charstrings;
   var type2Charstrings = this.getType2Charstrings(charstrings);
   var subrs = this.getType2Subrs(data.subrs);
 
@@ -5121,20 +5121,6 @@ Type1Font.prototype = {
       charset.push(charstrings[glyphId].glyphName);
     }
     return charset;
-  },
-
-  getOrderedCharStrings: function Type1Font_getOrderedCharStrings(glyphs) {
-    var charstrings = [];
-    for (var i = 0, length = glyphs.length; i < length; i++) {
-      var item = glyphs[i];
-      charstrings.push({
-        charstring: item.data,
-        width: item.width,
-        lsb: item.lsb,
-        glyphName: item.glyph
-      });
-    }
-    return charstrings;
   },
 
   getGlyphMapping: function Type1Font_getGlyphMapping(properties) {
