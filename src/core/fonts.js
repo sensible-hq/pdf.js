@@ -2841,29 +2841,6 @@ var Font = (function FontClosure() {
         };
       }
 
-      function createGlyphNameMap(glyphs, ids, properties) {
-        var glyphNames = properties.glyphNames;
-        if (!glyphNames) {
-          properties.glyphNameMap = {};
-          return;
-        }
-        var glyphsLength = glyphs.length;
-        var glyphNameMap = {};
-        var encoding = [];
-        for (var i = 0; i < glyphsLength; ++i) {
-          var glyphName = glyphNames[ids[i]];
-          if (!glyphName)
-            continue;
-          var unicode = glyphs[i].unicode;
-          glyphNameMap[glyphName] = unicode;
-          var code = glyphs[i].code;
-          encoding[code] = glyphName;
-        }
-        properties.glyphNameMap = glyphNameMap;
-        if (properties.overridableEncoding)
-          properties.baseEncoding = encoding;
-      }
-
       /**
        * Read the appropriate subtable from the cmap according to 9.6.6.4 from
        * PDF spec
@@ -3959,33 +3936,43 @@ var Font = (function FontClosure() {
 
       createOpenTypeHeader('\x4F\x54\x54\x4F', otf, 9);
 
-      var charstrings = font.charstrings;
       properties.fixedPitch = false; //isFixedPitch(charstrings);
 
+      var mapping = font.getGlyphMapping(properties);
+      var newMapping = adjustMapping(mapping, properties);
+      this.toFontChar = newMapping.toFontChar;
+      var numGlyphs = font.numGlyphs;
+
       var seacs = font.seacs;
-      if (SEAC_ANALYSIS_ENABLED && seacs) {
-        var seacMap = [];
+      if (SEAC_ANALYSIS_ENABLED && seacs && seacs.length) {
         var matrix = properties.fontMatrix || FONT_IDENTITY_MATRIX;
-        for (var i = 0; i < charstrings.length; ++i) {
-          var charstring = charstrings[i];
-          var seac = seacs[charstring.gid];
-          if (!seac) {
-            continue;
-          }
+        var charset = font.getCharset();
+        var charCodeToGlyphId = mapping;
+        var toFontChar = newMapping.toFontChar;
+        var seacs = font.seacs;
+        var seacMap = Object.create(null);
+        var glyphIdToCharCode = Object.create(null);
+        for (var charCode in charCodeToGlyphId) {
+          glyphIdToCharCode[charCodeToGlyphId[charCode]] = charCode | 0;
+        }
+        for (var glyphId in seacs) {
+          glyphId |= 0;
+          var seac = seacs[glyphId];
           var baseGlyphName = Encodings.StandardEncoding[seac[2]];
-          var baseUnicode = glyphNameMap[baseGlyphName];
           var accentGlyphName = Encodings.StandardEncoding[seac[3]];
-          var accentUnicode = glyphNameMap[accentGlyphName];
-          if (!baseUnicode || !accentUnicode) {
+          var baseGlyphId = charset.indexOf(baseGlyphName);
+          var accentGlyphId = charset.indexOf(accentGlyphName);
+          if (baseGlyphId < 0 || accentGlyphId < 0) {
             continue;
           }
           var accentOffset = {
             x: seac[0] * matrix[0] + seac[1] * matrix[2] + matrix[4],
             y: seac[0] * matrix[1] + seac[1] * matrix[3] + matrix[5]
           };
-          seacMap[charstring.unicode] = {
-            baseUnicode: baseUnicode,
-            accentUnicode: accentUnicode,
+          var charCode = glyphIdToCharCode[glyphId];
+          seacMap[charCode] = {
+            baseFontCharCode: toFontChar[glyphIdToCharCode[baseGlyphId]],
+            accentFontCharCode: toFontChar[glyphIdToCharCode[accentGlyphId]],
             accentOffset: accentOffset
           };
         }
@@ -3993,13 +3980,6 @@ var Font = (function FontClosure() {
       }
 
       var unitsPerEm = 1 / (properties.fontMatrix || FONT_IDENTITY_MATRIX)[0];
-
-      var mapping = font.getGlyphMapping(font.charstrings, properties);
-      // !!!! THIS IS BAD
-      charstrings = font.charstrings;
-      var newMapping = adjustMapping(mapping, properties);
-      this.toFontChar = newMapping.toFontChar;
-      var numGlyphs = font.numGlyphs;
 
       var fields = {
         // PostScript Font Program
@@ -4058,6 +4038,7 @@ var Font = (function FontClosure() {
 
         // Horizontal metrics
         'hmtx': (function fontFieldsHmtx() {
+          var charstrings = font.charstrings;
           var hmtx = '\x00\x00\x00\x00'; // Fake .notdef
           for (var i = 0, ii = numGlyphs; i < ii; i++) {
             // !!!!!!! when we have a cff font htmx should match the x in the font
@@ -4263,11 +4244,11 @@ var Font = (function FontClosure() {
       }
 
       var accent = null;
-      if (this.seacMap && this.seacMap[fontCharCode]) {
-        var seac = this.seacMap[fontCharCode];
-        fontCharCode = seac.baseUnicode;
+      if (this.seacMap && this.seacMap[charcode]) {
+        var seac = this.seacMap[charcode];
+        fontCharCode = seac.baseFontCharCode;
         accent = {
-          fontChar: String.fromCharCode(seac.accentUnicode),
+          fontChar: String.fromCharCode(seac.accentFontCharCode),
           offset: seac.accentOffset
         };
       }
@@ -5133,6 +5114,15 @@ Type1Font.prototype = {
     return this.charstrings.length;
   },
 
+  getCharset: function Type1Font_getCharset() {
+    var charset = ['.notdef'];
+    var charstrings = this.charstrings;
+    for (var glyphId = 0; glyphId < charstrings.length; glyphId++) {
+      charset.push(charstrings[glyphId].glyphName);
+    }
+    return charset;
+  },
+
   getOrderedCharStrings: function Type1Font_getOrderedCharStrings(glyphs) {
     var charstrings = [];
     for (var i = 0, length = glyphs.length; i < length; i++) {
@@ -5147,8 +5137,8 @@ Type1Font.prototype = {
     return charstrings;
   },
 
-  getGlyphMapping: function Type1Font_getGlyphMapping(charstrings, properties) {
-
+  getGlyphMapping: function Type1Font_getGlyphMapping(properties) {
+    var charstrings = this.charstrings;
     var glyphNames = ['.notdef'];
     for (var glyphId = 0; glyphId < charstrings.length; glyphId++) {
       glyphNames.push(charstrings[glyphId].glyphName);
@@ -5173,7 +5163,8 @@ Type1Font.prototype = {
     for (i = 0, ii = charstrings.length; i < ii; i++) {
       var charstring = charstrings[i];
       if (charstring.seac) {
-        seacMap[i] = charstring.seac;
+        // Offset by 1 for .notdef
+        seacMap[i + 1] = charstring.seac;
       }
     }
     return seacMap;
@@ -5320,7 +5311,7 @@ var CFFFont = (function CFFFontClosure() {
     var parser = new CFFParser(file, properties);
     this.cff = parser.parse();
     var compiler = new CFFCompiler(this.cff);
-    this.readExtra();
+    this.seacs = this.cff.seacs;
     try {
       this.data = compiler.compile();
     } catch (e) {
@@ -5335,8 +5326,8 @@ var CFFFont = (function CFFFontClosure() {
     get numGlyphs() {
       return this.cff.charStrings.count;
     },
-    readExtra: function CFFFont_readExtra() {
-      this.seacs = this.cff.seacs;
+    getCharset: function CFFFont_getCharset() {
+      return this.cff.charset.charset;
     },
     getGlyphMapping: function CFFFont_getGlyphMapping() {
       var cff = this.cff;
