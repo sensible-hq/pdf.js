@@ -411,6 +411,14 @@ function isTimelinessChange(chunks) {
   return false;
 }
 
+function names(str) {
+  var regex = /^(?:[\d\u2605]+(?: {2,}|__))+(.*?)(?: {2,}|__)([A-Z]+)__/g;
+  var matches;
+  if (matches = regex.exec(str)) {
+    return [matches[1].trim(), matches[2]];
+  }
+}
+
 function partialMatch(regex, chunks) {
   return regex.test(chunks);
 }
@@ -437,19 +445,55 @@ function doPage(pdf, num, data) {
     // Collect all the text so we can sort it by position.
     for (var i = 0; i < textContent.items.length; i++) {
       var text = textContent.items[i];
+      var x = text.transform[4];
       var y = text.transform[5];
       currentPos = {
         y: y,
+        x: x,
         text: text.str
       };
       allText.push(currentPos);
     }
     allText.sort(function (a, b) {
+      if (a.y == b.y) return a.x - b.x;
       return b.y - a.y;
     });
+    // Join all the text that is on one line
+    var linesMerged = [];
+    var previous = null;
+    for (var i = 0; i < allText.length; i++) {
+      var text = allText[i];
+      if (previous && previous.y === text.y) {
+        previous.text += '__' + text.text;
+      } else {
+        linesMerged.push(text);
+        previous = text;
+      }
+    }
+    allText = linesMerged;
+    // Collect stock index data.
+    var indexes = [];
+    for (var i = 0; i < allText.length; i++) {
+      var text = allText[i];
+      var x = Math.round(text.x);
+      if (x >= 37 && x <= 57) {
+        var xx = names(text.text);
+        if (!xx) {
+          console.log(text.text + ' ' + text.y + ' ');
+          if (allText[i + 1]) {
+            console.log(allText[i + 1].text + ' ' + allText[i + 1].y);
+          }
+        } else {
+          console.log(xx);
+        }
+        indexes.push(text);
+      }
+    }
+
     // Now search for the timeliness changes.
     for (var i = 0; i < allText.length; i++) {
       var chunks = allText[i].text;
+      // console.log(allText[i].x + ',' + allText[i].y + ' ' + chunks);
       var date;
       if (num == 1 && (date = findDate(chunks))) {
         // console.log(date);
@@ -468,7 +512,6 @@ function doPage(pdf, num, data) {
       }
       if (collectChanges) {
         var change;
-        // console.log(chunks);
         if (change = isTimelinessChange(chunks)) {
           // console.log(chunks);
           data.up.push(change);
@@ -518,12 +561,12 @@ function nextDoc(x) {
     var numPages = pdf.numPages;
     var i = 0;
     function a(i) {
-      if (i >= numPages) {
+      if (i >= 2) { //numPages) {
         return data;
       }
-      if ((i + 1) == 2) {
-        i = 20;
-      }
+      // if ((i + 1) == 2) {
+      //   i = 20;
+      // }
       return doPage(pdf, i + 1, data).then(function() {
         if (foundDown) {
           foundDown = false;
@@ -539,7 +582,7 @@ function nextDoc(x) {
       allData.push(data);
     });
   }).then(function () {
-    if (x >= all.length - 1) {
+    if (x >= 1 ) {//all.length - 1) {
       var parts = printCSV(allData);
       var bl = new Blob([parts], {type : 'text/csv'});
       console.log(URL.createObjectURL(bl));
