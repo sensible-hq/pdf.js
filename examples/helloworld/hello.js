@@ -372,23 +372,26 @@ var all = [
 'From(Kathy & George Burnham (gkolorado@yahoo.com))_ID(8_2)_Jul2707.pdf',
 'From(Kathy & George Burnham (gkolorado@yahoo.com))_ID(9_2)_Jul2007.pdf',];
 
-function mergeGlyphs(glyphs) {
-  var part = '';
-  var chunks = [];
-  for (var i = 0; i < glyphs.length; i++) {
-    var glyph = glyphs[i];
-    if (isNum(glyph) || glyph === null) {
-      chunks.push(part);
-      part = '';
-    } else {
-      part += glyph.unicode;
-    }
-  }
-  if (part !== '') {
-    chunks.push(part);
-  }
-  return chunks;
-}
+// function mergeGlyphs(glyphs) {
+//   var part = '';
+//   var chunks = [];
+//   for (var i = 0; i < glyphs.length; i++) {
+//     var glyph = glyphs[i];
+//     if (glyph === null) {
+//       chunks.push(part + ' ');
+//       part = '';
+//     } else if (isNum(glyph)) {
+//       chunks.push(part + ' ');
+//       part = '';
+//     } else {
+//       part += glyph.unicode;
+//     }
+//   }
+//   if (part !== '') {
+//     chunks.push(part);
+//   }
+//   return chunks;
+// }
 
 function isTimelinessNumber(num) {
   switch (num) {
@@ -412,7 +415,7 @@ function isTimelinessChange(chunks) {
 }
 
 function names(str) {
-  var regex = /^(?:[\d\u2605]+(?: {2,}|__))+(.*?)(?: {2,}|__)([A-Z]+)__/g;
+  var regex = /^(?:[\d\u2605]+(?: {2,}|__))+(.*?)(?: {2,}|__)([A-Z\.]+)__/g;
   var matches;
   if (matches = regex.exec(str)) {
     return [matches[1].trim(), matches[2]];
@@ -432,10 +435,15 @@ function findDate(input) {
   return false;
 }
 
+function removeMarket(input) {
+
+}
+
 var collectChanges = false;
 
 var foundDown = false;
 
+var indexes = {};
 function doPage(pdf, num, data) {
   var allText = [];
   var currentPos;
@@ -455,7 +463,7 @@ function doPage(pdf, num, data) {
       allText.push(currentPos);
     }
     allText.sort(function (a, b) {
-      if (a.y == b.y) return a.x - b.x;
+      if (Math.abs(a.y - b.y) < .5) return a.x - b.x;
       return b.y - a.y;
     });
     // Join all the text that is on one line
@@ -463,7 +471,7 @@ function doPage(pdf, num, data) {
     var previous = null;
     for (var i = 0; i < allText.length; i++) {
       var text = allText[i];
-      if (previous && previous.y === text.y) {
+      if (previous && Math.abs(previous.y - text.y) < .5) {
         previous.text += '__' + text.text;
       } else {
         linesMerged.push(text);
@@ -472,21 +480,27 @@ function doPage(pdf, num, data) {
     }
     allText = linesMerged;
     // Collect stock index data.
-    var indexes = [];
     for (var i = 0; i < allText.length; i++) {
       var text = allText[i];
       var x = Math.round(text.x);
-      if (x >= 37 && x <= 57) {
+      // console.log(text.text + ' (' + text.x + ', ' + text.y + ')');
+      if (x >= 37 && x <= 60) {
         var xx = names(text.text);
         if (!xx) {
-          console.log(text.text + ' ' + text.y + ' ');
-          if (allText[i + 1]) {
-            console.log(allText[i + 1].text + ' ' + allText[i + 1].y);
-          }
+          // if (allText[i - 1]) {
+          //   console.log(allText[i - 1].text + ' ' + allText[i - 1].y);
+          // }
+          // if (allText[i + 1]) {
+          //   console.log(allText[i + 1].text + ' ' + allText[i + 1].y);
+          // }
+          // if (allText[i + 2]) {
+          //   console.log(allText[i + 2].text + ' ' + allText[i + 2].y);
+          // }
         } else {
-          console.log(xx);
+          // console.log(xx);
+          var name = xx[0].toLowerCase().replace('__(ndq)', '').replace('__(tse)', '').replace('__(ase)', '').replace('(g)', '').replace('(__)', '').trim();
+          indexes[name] = xx[1];
         }
-        indexes.push(text);
       }
     }
 
@@ -525,8 +539,17 @@ function doPage(pdf, num, data) {
 
 var missingData = [];
 
-function printCSV(data) {
+function findTicker(name, indexes) {
+  name = name.toLowerCase();
+  name = name.replace('(b)', '').trim();
+  if (name in indexes) {
+    return indexes[name];
+  }
   debugger;
+  return false;
+}
+
+function printCSV(data, indexes) {
   var out = '';
   for (var i = 0; i < data.length; i++) {
     var a = data[i];
@@ -534,12 +557,19 @@ function printCSV(data) {
       missingData.push(a.filename);
     }
     for (var j = 0; j < a.up.length; j++) {
+      var ticker = findTicker(a.up[j][0], indexes);
+      if (ticker === false) {
+        console.log('DIDNT FIND' + a.up[j][0]);
+        debugger;
+      }
       var line = [
         a.filename,
         a.date[0].toISOString().slice(0, 19).replace('T', ' '),
         a.up[j][0].replace(',', ' '),
         a.up[j][1],
-        a.up[j][2]];
+        a.up[j][2],
+        ticker
+      ];
       out += line.join(',') + '\n';
     }
   }
@@ -550,6 +580,7 @@ var allData = [];
 
 function nextDoc(x) {
   var filename = all[x];
+  indexes = {};
   console.log(filename);
   PDFJS.getDocument('/pdfs/ayi/' + encodeURI(filename)).then(function(pdf) {
     // Using promise to fetch the page
@@ -561,9 +592,9 @@ function nextDoc(x) {
     var numPages = pdf.numPages;
     var i = 0;
     function a(i) {
-      if (i >= 2) { //numPages) {
-        return data;
-      }
+      // if (i >= 3) { //numPages) {
+      //   return data;
+      // }
       // if ((i + 1) == 2) {
       //   i = 20;
       // }
@@ -582,13 +613,15 @@ function nextDoc(x) {
       allData.push(data);
     });
   }).then(function () {
-    if (x >= 1 ) {//all.length - 1) {
-      var parts = printCSV(allData);
-      var bl = new Blob([parts], {type : 'text/csv'});
-      console.log(URL.createObjectURL(bl));
+    console.log((x + 1) + ' of ' + all.length);
+    var parts = printCSV(allData, indexes);
+    allData = [];
+    if (x >= all.length - 1) {
+      // var bl = new Blob([parts], {type : 'text/csv'});
+      // console.log(URL.createObjectURL(bl));
+      // console.log(parts);
       return;
     }
-    console.log((x + 1) + ' of ' + all.length);
     return nextDoc(x + 1)
   });
 }
