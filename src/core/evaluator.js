@@ -729,7 +729,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       var preprocessor = new EvaluatorPreprocessor(stream, xref, stateManager);
       var timeSlotManager = new TimeSlotManager();
 
-      return new Promise(function next(resolve, reject) {
+      function next() {
         task.ensureNotTerminated();
         timeSlotManager.reset();
         var stop, operation = {}, i, ii, cs;
@@ -777,8 +777,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                                                stateManager.state.clone()).
                     then(function () {
                       stateManager.restore();
-                      next(resolve, reject);
-                    }, reject);
+                      return next();
+                    });
                 } else if (type.name === 'Image') {
                   self.buildPaintImageXObject(resources, xobj, false,
                     operatorList, name, imageCache);
@@ -802,8 +802,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                 then(function (loadedName) {
                   operatorList.addDependency(loadedName);
                   operatorList.addOp(OPS.setFont, [loadedName, fontSize]);
-                  next(resolve, reject);
-                }, reject);
+                  return next();
+                });
             case OPS.endInlineImage:
               var cacheKey = args[0].cacheKey;
               if (cacheKey) {
@@ -904,9 +904,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               cs = stateManager.state.fillColorSpace;
               if (cs.name === 'Pattern') {
                 return self.handleColorN(operatorList, OPS.setFillColorN,
-                  args, cs, patterns, resources, task, xref).then(function() {
-                    next(resolve, reject);
-                  }, reject);
+                  args, cs, patterns, resources, task, xref).then(next);
               }
               args = cs.getRgb(args, 0);
               fn = OPS.setFillRGBColor;
@@ -915,9 +913,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               cs = stateManager.state.strokeColorSpace;
               if (cs.name === 'Pattern') {
                 return self.handleColorN(operatorList, OPS.setStrokeColorN,
-                  args, cs, patterns, resources, task, xref).then(function() {
-                    next(resolve, reject);
-                  }, reject);
+                  args, cs, patterns, resources, task, xref).then(next);
               }
               args = cs.getRgb(args, 0);
               fn = OPS.setStrokeRGBColor;
@@ -950,9 +946,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
               var gState = extGState.get(dictName.name);
               return self.setGState(resources, gState, operatorList, task,
-                xref, stateManager).then(function() {
-                  next(resolve, reject);
-                }, reject);
+                xref, stateManager).then(next);
             case OPS.moveTo:
             case OPS.lineTo:
             case OPS.curveTo:
@@ -986,17 +980,17 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           operatorList.addOp(fn, args);
         }
         if (stop) {
-          deferred.then(function () {
-            next(resolve, reject);
-          }, reject);
-          return;
+          return deferred.then(next);
         }
         // Some PDFs don't close all restores inside object/form.
         // Closing those for them.
         for (i = 0, ii = preprocessor.savedStatesDepth; i < ii; i++) {
           operatorList.addOp(OPS.restore, []);
         }
-        resolve();
+        return;
+      }
+      return new Promise(function(resolve, reject) {
+        resolve(next());
       });
     },
 
