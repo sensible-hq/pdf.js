@@ -38,6 +38,217 @@ var approximateFraction = uiUtils.approximateFraction;
 var roundToDivide = uiUtils.roundToDivide;
 var RenderingStates = pdfRenderingQueue.RenderingStates;
 
+
+
+
+
+
+
+
+function ProxyVariable(value) {
+  this.value = value;
+}
+
+var Proxy2dContext = function() {
+  this.actions = [];
+  this.deps = [];
+};
+    function escape(a) {
+      var type = typeof a;
+      if (type === 'number' || type === 'boolean')
+        return a;
+      if (a instanceof ProxyVariable) {
+        return a.value;
+      }
+      var str = JSON.stringify(a);
+      return str;
+    }
+    function arg(a) {
+      var b = [];
+      for (var i = 0, ii = a.length; i < ii; i++) {
+        b.push(escape(a[i]));
+      }
+      return b;
+    }
+Proxy2dContext.prototype = {
+  callFunction: function(method, args) {
+    // convert args to real array
+    args = Array.prototype.slice.call(args);
+    this.actions.push([0, method, args]);
+  },
+  setAttribute: function(key, value) {
+    this.actions.push([1, key, value]);
+  },
+  callCustom: function(str) {
+    this.actions.push([2, str]);
+  },
+  dump: function(limit) {
+    limit = limit || this.actions.length;
+    var out = '';
+    out += 'function loadDeps() { return Promise.all([' + this.deps.join(',') + ']); }\n';
+    out += 'function draw(ctx, deps) {\n';
+    for (var i = 0; i < limit; i++) {
+      var action = this.actions[i];
+      var type = action[0];
+      switch (type) {
+        case 0: // function
+          out += 'ctx.' + action[1] + '(' + arg(action[2]).join(',') + ');\n';
+          break;
+        case 1: // attribute
+          out += 'ctx.' + action[1] + ' = ' + escape(action[2]) + ';\n';
+          break;
+        case 2: // custom
+          out += action[1];
+          break;
+      }
+    }
+    out += '};\n';
+    return out;
+  },
+
+  // State
+  save: function() {
+    this.callFunction('save', []);
+  },
+  restore: function() {
+    this.callFunction('restore', []);
+  },
+  // Transformations
+  rotate: function() {
+    this.callFunction('rotate', arguments);
+  },
+  scale: function() {
+    this.callFunction('scale', arguments);
+  },
+  setTransform: function() {
+    this.callFunction('setTransform', arguments);
+  },
+  transform: function() {
+    this.callFunction('transform', arguments);
+  },
+  translate: function() {
+    this.callFunction('translate', arguments);
+  },
+  // rects
+  clearRect: function() {
+    this.callFunction('clearRect', arguments);
+  },
+  fillRect: function() {
+    this.callFunction('fillRect', arguments);
+  },
+  strokeRect: function() {
+    this.callFunction('strokeRect', arguments);
+  },
+  // Complex shapes (paths)
+  arc: function() {
+    this.callFunction('arc', arguments);
+  },
+  arcTo: function() {
+    this.callFunction('arcTo', arguments);
+  },
+  beginPath: function() {
+    this.callFunction('beginPath', []);
+  },
+  bezierCurveTo: function() {
+    this.callFunction('bezierCurveTo', arguments);
+  },
+  clip: function() {
+    this.callFunction('clip', arguments);
+  },
+  closePath: function() {
+    this.callFunction('closePath', arguments);
+  },
+  fill: function() {
+    this.callFunction('fill', arguments);
+  },
+  lineTo: function() {
+    this.callFunction('lineTo', arguments);
+  },
+  moveTo: function() {
+    this.callFunction('moveTo', arguments);
+  },
+  quadraticCurveTo: function() {
+    this.callFunction('quadraticCurveTo', arguments);
+  },
+  rect: function() {
+    this.callFunction('rect', arguments);
+  },
+  stroke: function() {
+    this.callFunction('stroke', arguments);
+  },
+  // Text
+  fillText: function() {
+    this.callFunction('fillText', arguments);
+  },
+  strokeText: function() {
+    this.callFunction('strokeText', arguments);
+  },
+  _addDependentImage: function(canvas) {
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error('Only HTMLCanvasElement is supported for now.');
+    }
+    var imgData = canvas.toDataURL();
+    var load = "new Promise(function(resolve, reject) {\n";
+    load += "var image = new Image();\n";
+    load += "image.onload = function() {resolve(image);};\n";
+    load += "image.src = \"" + imgData + "\";\n";
+    load += "})"
+    var id = this.deps.length;
+    this.deps.push(load);
+    return id;
+  },
+  drawImage: function(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight) {
+    var id = this._addDependentImage(image);
+    var args = Array.prototype.slice.call(arguments);
+    args.shift();
+    args = arg(args);
+    args.unshift('deps[' + id + ']');
+    args = args.join(',');
+    this.callCustom('ctx.drawImage(' + args + ');\n');
+  },
+  createImageData: function(width, height) {
+    return {
+      data: new Array(width * height * 4),
+      length: width * height * 4,
+      'width': width,
+      'height': height
+    }
+  },
+  createPattern: function(image, repetition) {
+    var id = this._addDependentImage(image);
+    this.callCustom('var pattern' + id + ' = ctx.createPattern(deps[' + id + '], "' + repetition + '");\n');
+    return new ProxyVariable('pattern' + id);
+  },
+  // Attributes
+  set globalAlpha(value) {
+    this.setAttribute('globalAlpha', value);
+  },
+  set globalCompositeOperation(value) {
+    this.setAttribute('globalCompositeOperation', value);
+  },
+  set fillStyle(value) {
+    this.setAttribute('fillStyle', value);
+  },
+  set strokeStyle(value) {
+    this.setAttribute('strokeStyle', value);
+  },
+  set lineCap(value) {
+    this.setAttribute('lineCap', value);
+  },
+  set lineJoin(value) {
+    this.setAttribute('lineJoin', value);
+  },
+  set lineWidth(value) {
+    this.setAttribute('lineWidth', value);
+  },
+  set miterLimit(value) {
+    this.setAttribute('miterLimit', value);
+  },
+  set font(value) {
+    this.setAttribute('font', value);
+  }
+};
+
 var TEXT_LAYER_RENDER_DELAY = 200; // ms
 
 /**
@@ -112,8 +323,7 @@ var PDFPageView = (function PDFPageViewClosure() {
       this.pdfPage = pdfPage;
       this.pdfPageRotate = pdfPage.rotate;
       var totalRotation = (this.rotation + this.pdfPageRotate) % 360;
-      this.viewport = pdfPage.getViewport(this.scale * CSS_UNITS,
-                                          totalRotation);
+      this.viewport = pdfPage.getViewport(96.0 / 72.0);
       this.stats = pdfPage.stats;
       this.reset();
     },
@@ -342,10 +552,10 @@ var PDFPageView = (function PDFPageViewClosure() {
       }
       this.canvas = canvas;
 
-//#if MOZCENTRAL || FIREFOX || GENERIC
-      canvas.mozOpaque = true;
-//#endif
-      var ctx = canvas.getContext('2d', {alpha: false});
+      var ctx = new Proxy2dContext(); // canvas.getContext('2d', {alpha: false});
+      window.z = ctx;
+
+      ctx.canvas = canvas;
       var outputScale = getOutputScale(ctx);
       this.outputScale = outputScale;
 
@@ -411,6 +621,7 @@ var PDFPageView = (function PDFPageViewClosure() {
 
       var self = this;
       function pageViewDrawCallback(error) {
+        debugger;
         // The renderTask may have been replaced by a new one, so only remove
         // the reference to the renderTask if it matches the one that is
         // triggering this callback.

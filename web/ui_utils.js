@@ -95,8 +95,8 @@ PDFJS.locale = (PDFJS.locale === undefined ? navigator.language : PDFJS.locale);
                     not required, true otherwise.
  */
 function getOutputScale(ctx) {
-  var devicePixelRatio = window.devicePixelRatio || 1;
-  var backingStoreRatio = ctx.webkitBackingStorePixelRatio ||
+  var devicePixelRatio = 1||window.devicePixelRatio || 1;
+  var backingStoreRatio = 1||ctx.webkitBackingStorePixelRatio ||
                           ctx.mozBackingStorePixelRatio ||
                           ctx.msBackingStorePixelRatio ||
                           ctx.oBackingStorePixelRatio ||

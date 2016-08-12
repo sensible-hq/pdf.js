@@ -388,6 +388,8 @@ function checkFBF(task, results, browser) {
       continue;
     }
     if (r0Page.snapshot !== r1Page.snapshot) {
+      fs.writeFileSync((page + 1) + 'r0.png', new Buffer(r0Page.snapshot.substring(22), 'base64'));
+      fs.writeFileSync((page + 1) + 'r1.png', new Buffer(r1Page.snapshot.substring(22), 'base64'));
       console.log('TEST-UNEXPECTED-FAIL | forward-back-forward test ' +
                   task.id + ' | in ' + browser + ' | first rendering of page ' +
                   (page + 1) + ' != second');
