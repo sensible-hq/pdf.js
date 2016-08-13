@@ -39,11 +39,18 @@ var roundToDivide = uiUtils.roundToDivide;
 var RenderingStates = pdfRenderingQueue.RenderingStates;
 
 
-
-
-
-
-
+var originalFontFace = FontFace;
+var fontFaces = [];
+class FontFaceWrapper extends FontFace {
+  constructor(name, data, options) {
+    fontFaces.push({
+      name: name,
+      data: data,
+    });
+    super(name, data, options);
+  }
+}
+window.FontFace = FontFaceWrapper;
 
 function ProxyVariable(value) {
   this.value = value;
@@ -52,6 +59,7 @@ function ProxyVariable(value) {
 var Proxy2dContext = function() {
   this.actions = [];
   this.deps = [];
+  this.fonts = [];
 };
     function escape(a) {
       var type = typeof a;
@@ -85,6 +93,15 @@ Proxy2dContext.prototype = {
   dump: function(limit) {
     limit = limit || this.actions.length;
     var out = '';
+    for (var fontName of this.fonts) {
+      var font = fontFaces.find((a) => {
+        if (a.name === fontName) {
+          return true;
+        }
+        return false;
+      });
+      b
+    }
     out += 'function loadDeps() { return Promise.all([' + this.deps.join(',') + ']); }\n';
     out += 'function draw(ctx, deps) {\n';
     for (var i = 0; i < limit; i++) {
@@ -245,6 +262,11 @@ Proxy2dContext.prototype = {
     this.setAttribute('miterLimit', value);
   },
   set font(value) {
+    // Highly tailored to pdf.js
+    var fontName = value.substring(value.indexOf('"') + 1, value.lastIndexOf('"'));
+    if (!this.fonts.includes(fontName)) {
+      this.fonts.push(fontName);
+    }
     this.setAttribute('font', value);
   }
 };
