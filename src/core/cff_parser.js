@@ -926,7 +926,18 @@ var CFFStrings = (function CFFStringsClosure() {
       return CFFStandardStrings[0];
     },
     add: function CFFStrings_add(value) {
-      this.strings.push(value);
+      return this.strings.push(value) + 390;
+    },
+    indexOf: function CFFStrings_indexOf(value) {
+      let index = CFFStandardStrings.indexOf(value);
+      if (index >= 0) {
+        return index;
+      }
+      index = this.strings.indexOf(value);
+      if (index >= 0) {
+        return index + 391;
+      }
+      return -1;
     },
     get count() {
       return this.strings.length;
