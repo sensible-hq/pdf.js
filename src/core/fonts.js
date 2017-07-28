@@ -43,6 +43,11 @@ var PRIVATE_USE_OFFSET_START = 0xE000;
 var PRIVATE_USE_OFFSET_END = 0xF8FF;
 var SKIP_PRIVATE_USE_RANGE_F000_TO_F01F = false;
 
+// Browsers draw an empty box for notdef glyphs whereas PDF renderers will
+// show the actual glyph in that position if there is one. To workaround this,
+// the notdef glyph in the original font is moved to glyph id 1.
+const OFFSET_NOTDEF_GLYPH_ID = 1;
+
 // PDF Glyph Space Units are one Thousandth of a TextSpace Unit
 // except for Type 3 fonts
 var PDF_GLYPH_SPACE_UNITS = 1000;
@@ -2863,7 +2868,7 @@ function type1FontGlyphMapping(properties, builtInEncoding, glyphNames) {
       if (glyphId >= 0) {
         charCodeToGlyphId[charCode] = glyphId;
       } else {
-        charCodeToGlyphId[charCode] = 0; // notdef
+        charCodeToGlyphId[charCode] = OFFSET_NOTDEF_GLYPH_ID;
       }
     }
   } else if (isSymbolicFont) {
@@ -2880,7 +2885,7 @@ function type1FontGlyphMapping(properties, builtInEncoding, glyphNames) {
       if (glyphId >= 0) {
         charCodeToGlyphId[charCode] = glyphId;
       } else {
-        charCodeToGlyphId[charCode] = 0; // notdef
+        charCodeToGlyphId[charCode] = OFFSET_NOTDEF_GLYPH_ID;
       }
     }
   }
@@ -2904,7 +2909,7 @@ function type1FontGlyphMapping(properties, builtInEncoding, glyphNames) {
       if (glyphId >= 0) {
         charCodeToGlyphId[charCode] = glyphId;
       } else {
-        charCodeToGlyphId[charCode] = 0; // notdef
+        charCodeToGlyphId[charCode] = OFFSET_NOTDEF_GLYPH_ID;
       }
     }
   }
