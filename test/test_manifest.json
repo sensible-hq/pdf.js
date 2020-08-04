@@ -9,7 +9,24 @@
        "file": "pdfs/tracemonkey.pdf",
        "md5": "9a192d8b1a7dc652a19835f6f08098bd",
        "rounds": 1,
-       "type": "eq"
+       "type": "eq",
+       "fuzzy": [
+          {
+            "if": "page == 2",
+            "maxDifference": 4,
+            "totalPixels": 240
+          },
+          {
+            "if": "page == 6",
+            "maxDifference": 1,
+            "totalPixels": 1
+          },
+          {
+            "if": "page == 11 && browser == 'chrome'",
+            "maxDifference": 255,
+            "totalPixels": 1626
+          }
+       ]
     },
     {  "id": "tracemonkey-renderTaskOnContinue",
        "file": "pdfs/tracemonkey.pdf",

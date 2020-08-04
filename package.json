@@ -36,6 +36,7 @@
     "merge-stream": "^2.0.0",
     "mkdirp": "^1.0.4",
     "needle": "^2.5.2",
+    "pngjs": "^5.0.0",
     "postcss": "^8.1.4",
     "postcss-calc": "^7.0.5",
     "postcss-css-variables": "^0.17.0",
