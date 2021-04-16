@@ -415,7 +415,29 @@ const PDFViewerApplication = {
    * @private
    */
   _forceCssTheme() {
-    const cssTheme = AppOptions.get("viewerCssTheme");
+    let cssTheme = AppOptions.get("viewerCssTheme");
+    if (
+      typeof PDFJSDev !== "undefined" &&
+      PDFJSDev.test("MOZCENTRAL") &&
+      cssTheme === ViewerCssTheme.AUTOMATIC
+    ) {
+      // We want the viewer to match the Firefox theme.
+      if (
+        window.matchMedia("(-moz-toolbar-prefers-color-scheme: dark)").matches
+      ) {
+        // Force dark mode.
+        cssTheme = ViewerCssTheme.DARK;
+      } else if (
+        window.matchMedia(
+          "(-moz-toolbar-prefers-color-scheme: light) and (prefers-color-scheme: dark)"
+        ).matches
+      ) {
+        // Somewhat odd case, light Firefox theme with dark OS theme. Force
+        // light mode.
+        cssTheme = ViewerCssTheme.LIGHT;
+      }
+      // Else keep it automatic.
+    }
     if (
       cssTheme === ViewerCssTheme.AUTOMATIC ||
       !Object.values(ViewerCssTheme).includes(cssTheme)
