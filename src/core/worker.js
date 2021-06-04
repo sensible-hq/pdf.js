@@ -411,6 +411,7 @@ class WorkerMessageHandler {
         ignoreErrors: data.ignoreErrors,
         isEvalSupported: data.isEvalSupported,
         fontExtraProperties: data.fontExtraProperties,
+        useSystemFonts: data.useSystemFonts,
         standardFontDataUrl: data.standardFontDataUrl,
       };
 

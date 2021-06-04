@@ -97,6 +97,7 @@ const DefaultPartialEvaluatorOptions = Object.freeze({
   isEvalSupported: true,
   fontExtraProperties: false,
   standardFontDataUrl: null,
+  useSystemFonts: true,
 });
 
 const PatternType = {
@@ -385,6 +386,15 @@ class PartialEvaluator {
   }
 
   async fetchStandardFontData(name) {
+    // The symbol fonts are not consistent across platforms, always load the
+    // font data for them.
+    if (
+      this.options.useSystemFonts &&
+      name !== "Symbol" &&
+      name !== "ZapfDingbats"
+    ) {
+      return null;
+    }
     const standardFontNameToFileName = getStdFontNameToFileMap();
     const filename = standardFontNameToFileName[name];
     if (this.options.standardFontDataUrl !== null) {
@@ -3755,8 +3765,9 @@ class PartialEvaluator {
         const standardFontName = getStandardFontName(baseFontName);
         let file = null;
         if (standardFontName) {
+          properties.isStandardFont = true;
           file = await this.fetchStandardFontData(standardFontName);
-          properties.isStandardFont = !!file;
+          properties.isInternalFont = !!file;
         }
         return this.extractDataStructures(dict, dict, properties).then(
           newProperties => {
@@ -3827,6 +3838,7 @@ class PartialEvaluator {
       fontFile = new NullStream();
     }
     let isStandardFont = false;
+    let isInternalFont = false;
     if (fontFile) {
       if (fontFile.dict) {
         const subtypeEntry = fontFile.dict.get("Subtype");
@@ -3840,8 +3852,9 @@ class PartialEvaluator {
     } else if (type === "Type1") {
       const standardFontName = getStandardFontName(fontName.name);
       if (standardFontName) {
+        isStandardFont = true;
         fontFile = await this.fetchStandardFontData(standardFontName);
-        isStandardFont = !!fontFile;
+        isInternalFont = !!fontFile;
       }
     }
 
@@ -3854,6 +3867,7 @@ class PartialEvaluator {
       length2,
       length3,
       isStandardFont,
+      isInternalFont,
       loadedName: baseDict.loadedName,
       composite,
       fixedPitch: false,

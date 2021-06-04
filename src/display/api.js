@@ -152,6 +152,9 @@ function setPDFNetworkStreamFactory(pdfNetworkStreamFactory) {
  *   reading built-in CMap files. Providing a custom factory is useful for
  *   environments without Fetch API or `XMLHttpRequest` support, such as
  *   Node.js. The default value is {DOMCMapReaderFactory}.
+ * @property {boolean} [useSystemFonts] - When true, fonts that aren't embedded
+ *   in the PDF will fallback to a system font. Defaults to true for web
+ *   environments and false for node.
  * @property {string} [standardFontDataUrl] - The URL where the standard font
  *   files are located. Include the trailing slash.
  * @property {boolean} [standardFontDataWorkerFetch] - Enable fetching the font
@@ -325,6 +328,9 @@ function getDocument(src) {
   if (!Number.isInteger(params.maxImageSize)) {
     params.maxImageSize = -1;
   }
+  if (typeof params.useSystemFonts !== "boolean") {
+    params.useSystemFonts = !isNodeJS;
+  }
   if (typeof params.standardFontDataWorkerFetch !== "boolean") {
     params.standardFontDataWorkerFetch =
       params.StandardFontDataFactory === DOMStandardFontDataFactory;
@@ -480,6 +486,7 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
       isEvalSupported: source.isEvalSupported,
       fontExtraProperties: source.fontExtraProperties,
       enableXfa: source.enableXfa,
+      useSystemFonts: source.useSystemFonts,
       standardFontDataUrl: source.standardFontDataWorkerFetch
         ? source.standardFontDataUrl
         : null,

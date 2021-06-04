@@ -131,7 +131,7 @@ function adjustWidths(properties) {
 }
 
 function adjustToUnicode(properties, builtInEncoding) {
-  if (properties.isStandardFont) {
+  if (properties.isInternalFont) {
     return;
   }
   if (properties.hasIncludedToUnicodeMap) {
@@ -1090,7 +1090,7 @@ class Font {
       this.toFontChar = map;
     }
     this.loadedName = fontName.split("-")[0];
-    this.fontType = getFontType(type, subtype);
+    this.fontType = getFontType(type, subtype, properties.isStandardFont);
   }
 
   checkAndRepair(name, font, properties) {
