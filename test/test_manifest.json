@@ -1994,7 +1994,7 @@
        "rounds": 1,
        "type": "eq",
        "useSystemFonts": false,
-       "standardFontDataWorkerFetch": false
+       "useWorkerFetch": false
     },
     {  "id": "issue4573",
        "file": "pdfs/issue4573.pdf",

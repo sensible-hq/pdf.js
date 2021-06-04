@@ -421,7 +421,7 @@ var Driver = (function DriverClosure() {
             disableAutoFetch: !task.enableAutoFetch,
             pdfBug: true,
             useSystemFonts: task.useSystemFonts,
-            standardFontDataWorkerFetch: task.standardFontDataWorkerFetch,
+            useWorkerFetch: task.useWorkerFetch,
           });
           loadingTask.promise.then(
             doc => {

@@ -157,10 +157,10 @@ function setPDFNetworkStreamFactory(pdfNetworkStreamFactory) {
  *   environments and false for node.
  * @property {string} [standardFontDataUrl] - The URL where the standard font
  *   files are located. Include the trailing slash.
- * @property {boolean} [standardFontDataWorkerFetch] - Enable fetching the font
- *   data from the worker thread. When `true`, StandardFontDataFactory will be
- *   ignored. The default value is `true` in web environment and `false` for
- *   for Node.
+ * @property {boolean} [useWorkerFetch] - Enable using fetch in the worker for
+ *   resources. This currently only used for fetching the font data from the
+ *   worker thread. When `true`, StandardFontDataFactory will be ignored. The
+ *   default value is `true` in web environment and `false` for Node.
  * @property {Object} [StandardFontDataFactory] - The factory that will be used
  *   when reading the standard font files. Providing a custom factory is useful
  *   for environments without Fetch API or `XMLHttpRequest` support, such as
@@ -331,8 +331,8 @@ function getDocument(src) {
   if (typeof params.useSystemFonts !== "boolean") {
     params.useSystemFonts = !isNodeJS;
   }
-  if (typeof params.standardFontDataWorkerFetch !== "boolean") {
-    params.standardFontDataWorkerFetch =
+  if (typeof params.useWorkerFetch !== "boolean") {
+    params.useWorkerFetch =
       params.StandardFontDataFactory === DOMStandardFontDataFactory;
   }
   if (typeof params.isEvalSupported !== "boolean") {
@@ -487,7 +487,7 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
       fontExtraProperties: source.fontExtraProperties,
       enableXfa: source.enableXfa,
       useSystemFonts: source.useSystemFonts,
-      standardFontDataUrl: source.standardFontDataWorkerFetch
+      standardFontDataUrl: source.useWorkerFetch
         ? source.standardFontDataUrl
         : null,
     })
