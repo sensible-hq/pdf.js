@@ -420,6 +420,8 @@ var Driver = (function DriverClosure() {
             disableRange: task.disableRange,
             disableAutoFetch: !task.enableAutoFetch,
             pdfBug: true,
+            useSystemFonts: task.useSystemFonts,
+            standardFontDataWorkerFetch: task.standardFontDataWorkerFetch,
           });
           loadingTask.promise.then(
             doc => {
