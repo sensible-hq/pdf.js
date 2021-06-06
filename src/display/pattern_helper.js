@@ -119,7 +119,9 @@ class RadialAxialShadingPattern extends BaseShadingPattern {
     tmpCtx.fill();
 
     const pattern = ctx.createPattern(tmpCanvas.canvas, "repeat");
-    pattern.setTransform(createMatrix(ctx.mozCurrentTransformInverse));
+    if (typeof document != "undefined") {
+      pattern.setTransform(createMatrix(ctx.mozCurrentTransformInverse));
+      }
     return pattern;
   }
 }
@@ -610,6 +612,9 @@ class TilingPattern {
 
     const temporaryPatternCanvas = this.createPatternCanvas(owner);
 
+    const pattern = ctx.createPattern(temporaryPatternCanvas.canvas, "repeat");
+
+    if (typeof document != "undefined") {
     let domMatrix = createMatrix(matrix);
     // Rescale and so that the ctx.createPattern call generates a pattern with
     // the desired size.
@@ -618,8 +623,8 @@ class TilingPattern {
       1 / temporaryPatternCanvas.scaleY
     );
 
-    const pattern = ctx.createPattern(temporaryPatternCanvas.canvas, "repeat");
     pattern.setTransform(domMatrix);
+    }
 
     return pattern;
   }
