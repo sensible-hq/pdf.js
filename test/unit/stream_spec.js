@@ -47,6 +47,26 @@ describe("stream", function () {
       },
     });
   });
+  describe("Stream", function () {
+    it("should honor byteOffset in makeSubStream", function () {
+      // Place the payload at a non-zero byteOffset inside a larger backing
+      // ArrayBuffer, mimicking a pooled `Buffer` from `fs.readFileSync`.
+      const payload = new Uint8Array([10, 11, 12, 13, 14, 15]);
+      const backing = new Uint8Array(payload.length + 64);
+      backing.set(payload, 64);
+      const view = backing.subarray(64); // same bytes, byteOffset = 64
+
+      const stream = new Stream(view);
+      expect(stream.bytes.byteOffset).toEqual(64);
+
+      // A sub-stream must read from the view's region, not from the start of
+      // the backing buffer.
+      const subStream = stream.makeSubStream(2, 3);
+      expect(subStream.getBytes(3)).toMatchTypedArray(
+        new Uint8Array([12, 13, 14])
+      );
+    });
+  });
   describe("PredictorStream", function () {
     it("should decode simple predictor data", function () {
       const dict = new Dict();

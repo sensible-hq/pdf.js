@@ -123,7 +123,15 @@ var Stream = (function StreamClosure() {
       this.start = this.pos;
     },
     makeSubStream: function Stream_makeSubStream(start, length, dict) {
-      return new Stream(this.bytes.buffer, start, length, dict);
+      // `this.bytes` may be a view into a larger ArrayBuffer (e.g. a pooled
+      // `Buffer` from `fs.readFileSync`), so offset `start` by its `byteOffset`
+      // to address the correct region of the backing buffer.
+      return new Stream(
+        this.bytes.buffer,
+        this.bytes.byteOffset + start,
+        length,
+        dict
+      );
     },
   };
 
