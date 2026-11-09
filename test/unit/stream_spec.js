@@ -13,7 +13,11 @@
  * limitations under the License.
  */
 
-import { PredictorStream, Stream } from "../../src/core/stream.js";
+import {
+  PredictorStream,
+  Stream,
+  StreamsSequenceStream,
+} from "../../src/core/stream.js";
 import { Dict } from "../../src/core/primitives.js";
 
 describe("stream", function () {
@@ -65,6 +69,18 @@ describe("stream", function () {
       expect(subStream.getBytes(3)).toMatchTypedArray(
         new Uint8Array([12, 13, 14])
       );
+    });
+  });
+  describe("StreamsSequenceStream", function () {
+    it("should skip non-stream entries", function () {
+      // A page /Contents array can contain non-stream entries such as null,
+      // e.g. /Contents [ 75 0 R null 76 0 R ].
+      const sequence = new StreamsSequenceStream([
+        new Stream(new Uint8Array([1, 2])),
+        null,
+        new Stream(new Uint8Array([3])),
+      ]);
+      expect(sequence.getBytes()).toMatchTypedArray(new Uint8Array([1, 2, 3]));
     });
   });
   describe("PredictorStream", function () {
