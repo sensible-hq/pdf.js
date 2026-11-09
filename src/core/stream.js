@@ -21,7 +21,7 @@
 /* eslint-disable no-var */
 
 import { FormatError, stringToBytes, unreachable } from "../shared/util.js";
-import { isDict } from "./primitives.js";
+import { isDict, isStream } from "./primitives.js";
 import { isWhiteSpace } from "./core_utils.js";
 
 var Stream = (function StreamClosure() {
@@ -301,6 +301,7 @@ var DecodeStream = (function DecodeStreamClosure() {
 var StreamsSequenceStream = (function StreamsSequenceStreamClosure() {
   // eslint-disable-next-line no-shadow
   function StreamsSequenceStream(streams) {
+    streams = streams.filter(isStream);
     this.streams = streams;
 
     let maybeLength = 0;
